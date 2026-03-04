@@ -1,5 +1,10 @@
 """Sortique application entry point."""
 
+from sortique.factory import AppFactory
+
 
 def main() -> None:
-    print("Sortique starting...")
+    factory = AppFactory()
+    print("Sortique initialized successfully")
+    print(f"Config: {factory.config.get_all()}")
+    factory.close()
