@@ -15,6 +15,18 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# Media-type top-level folder mapping
+# ---------------------------------------------------------------------------
+
+_MEDIA_TYPE_FOLDER: dict[FileType, str] = {
+    FileType.IMAGE: "Images",
+    FileType.VIDEO: "Videos",
+    FileType.AUDIO: "Audio",
+    FileType.DOCUMENT: "Documents",
+}
+
+
+# ---------------------------------------------------------------------------
 # Category groupings used by _build_category_path
 # ---------------------------------------------------------------------------
 
@@ -57,6 +69,7 @@ class PathGenerator:
         original_ext: str,
         date_result: DateResult | None,
         exif: ExifResult | None,
+        file_type: FileType | None = None,
         is_burst: bool = False,
         burst_index: int = 0,
         is_export: bool = False,
@@ -76,6 +89,10 @@ class PathGenerator:
             Extracted date information (may be ``None``).
         exif:
             Extracted EXIF data (may be ``None``).
+        file_type:
+            The :class:`FileType` of the file.  When provided the path
+            is nested under a media-type folder (``Images/``, ``Videos/``,
+            ``Audio/``, ``Documents/``).
         is_burst:
             ``True`` when the file belongs to a burst sequence.
         burst_index:
@@ -90,21 +107,36 @@ class PathGenerator:
         # --- category path ---
         if is_export:
             parts: list[str] = ["Exports"]
-            if year is not None:
-                parts.append(str(year))
+            parts.append(str(year) if year is not None else "0000")
             cat_path = os.path.join(*parts)
         else:
             effective_category = category
             if category == "Collection":
-                ext_lower = (original_ext or "").lower()
-                if ext_lower and not ext_lower.startswith("."):
-                    ext_lower = "." + ext_lower
-                file_type = EXTENSION_MAP.get(ext_lower, FileType.UNKNOWN)
-                effective_category = f"Collection/{file_type.value.title()}"
+                if file_type is None:
+                    # Legacy: add file-type sub-folder when media-type
+                    # segregation is not active.
+                    ext_lower = (original_ext or "").lower()
+                    if ext_lower and not ext_lower.startswith("."):
+                        ext_lower = "." + ext_lower
+                    ft = EXTENSION_MAP.get(ext_lower, FileType.UNKNOWN)
+                    effective_category = f"Collection/{ft.value.title()}"
+
+            # Strip redundant "Documents/" prefix — the media-type folder
+            # already provides it when *file_type* is DOCUMENT.
+            if (
+                file_type == FileType.DOCUMENT
+                and effective_category.startswith("Documents/")
+            ):
+                effective_category = effective_category[len("Documents/"):]
 
             cat_path = self._build_category_path(
                 effective_category, year, make, model,
             )
+
+        # --- prepend media-type folder ---
+        media_folder = _MEDIA_TYPE_FOLDER.get(file_type) if file_type else None
+        if media_folder:
+            cat_path = os.path.join(media_folder, cat_path)
 
         # --- filename ---
         filename = self.generate_filename(
@@ -201,6 +233,7 @@ class PathGenerator:
         model: str | None,
     ) -> str:
         """Build the folder sub-path for a given category."""
+        year_str = str(year) if year is not None else "0000"
 
         # --- make/model + year  (Originals, RAW) ---
         if category in _MAKE_MODEL_YEAR_CATEGORIES:
@@ -208,28 +241,22 @@ class PathGenerator:
             parts: list[str] = [category]
             if make_model:
                 parts.append(make_model)
-            if year is not None:
-                parts.append(str(year))
+            parts.append(year_str)
             return os.path.join(*parts)
 
         # --- year only  (Edited, Export, Motion Photos, …) ---
         if category in _YEAR_ONLY_CATEGORIES:
-            if year is not None:
-                return os.path.join(category, str(year))
-            return category
+            return os.path.join(category, year_str)
 
         # --- Originals/Unknown  (year sub-folder) ---
         if category == "Originals/Unknown":
-            parts = ["Originals", "Unknown"]
-            if year is not None:
-                parts.append(str(year))
-            return os.path.join(*parts)
+            return os.path.join("Originals", "Unknown", year_str)
 
         # --- static  (Screenshots, Social Media, Hidden, Movies, Songs) ---
         if category in _STATIC_CATEGORIES:
             return category
 
-        # --- Documents/*, Collection/* — preserve structural slashes ---
+        # --- other (Collection, document sub-types, …) ---
         components = category.split("/")
         return os.path.join(*components)
 

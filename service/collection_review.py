@@ -137,6 +137,7 @@ class CollectionReviewer:
             original_ext=ext,
             date_result=date_result,
             exif=exif,
+            file_type=rec.file_type,
         )
 
         self.db.update_file_record(rec)

@@ -420,6 +420,7 @@ class Pipeline:
             original_ext=ext,
             date_result=self._date_result,
             exif=self._exif_result,
+            file_type=record.file_type,
         )
         record.destination_path = dest
 
@@ -452,6 +453,9 @@ class Pipeline:
             self._image_processor.copy_original(
                 record.source_path, record.destination_path,
             )
+            # Generate resized JPEG/PNG export for Originals and RAW only.
+            if record.category in ("Originals", "RAW"):
+                self._generate_image_export(record)
         elif record.file_type == FileType.VIDEO:
             stem = os.path.splitext(
                 os.path.basename(record.destination_path),
@@ -473,6 +477,36 @@ class Pipeline:
             )
 
         return True, None
+
+    # ------------------------------------------------------------------
+    # Export copy generation (Originals / RAW images only)
+    # ------------------------------------------------------------------
+
+    def _generate_image_export(self, record: FileRecord) -> None:
+        """Generate a resized JPEG/PNG export copy alongside the original."""
+        stem = os.path.splitext(os.path.basename(record.source_path))[0]
+        ext = os.path.splitext(record.source_path)[1]
+
+        export_dest = self._path_gen.generate(
+            category=record.category,
+            original_filename=stem,
+            original_ext=ext,
+            date_result=self._date_result,
+            exif=self._exif_result,
+            file_type=record.file_type,
+            is_export=True,
+        )
+        export_dest = self._path_gen.resolve_conflict(export_dest)
+
+        try:
+            self._image_processor.generate_export(
+                record.source_path, export_dest, self._exif_result,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Export generation failed for %s: %s",
+                record.source_path, exc,
+            )
 
     # ------------------------------------------------------------------
     # Stage 11 — RAW+JPEG pairing (placeholder — handled at batch level)
