@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSettings, QSize, Qt, QTimer
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QSizePolicy,
     QStackedWidget,
     QStatusBar,
@@ -21,6 +26,12 @@ from PySide6.QtWidgets import (
 
 if TYPE_CHECKING:
     from sortique.factory import AppFactory
+
+
+# Path to the bundled SVG icon (adjacent resources/ folder).
+_ICON_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "resources", "app_icon.svg"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -71,8 +82,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Sortique")
         self.setMinimumSize(QSize(900, 600))
 
+        if os.path.isfile(_ICON_PATH):
+            self.setWindowIcon(QIcon(_ICON_PATH))
+
         self._build_ui()
         self._build_status_bar()
+        self._build_menubar()
         self._restore_geometry()
 
         # Elapsed-time ticker (updates every second when a session is active).
@@ -154,6 +169,53 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(self._sidebar)
         root_layout.addWidget(self._stack)
 
+    def _build_menubar(self) -> None:
+        menubar = self.menuBar()
+
+        # File menu
+        file_menu = menubar.addMenu("&File")
+        exit_action = QAction("E&xit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+        about_action = QAction("&About Sortique…", self)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+
+    def _show_about(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("About Sortique")
+        dlg.setFixedWidth(340)
+
+        layout = QVBoxLayout(dlg)
+        layout.setSpacing(10)
+        layout.setContentsMargins(24, 24, 24, 16)
+
+        if os.path.isfile(_ICON_PATH):
+            icon_label = QLabel()
+            icon_label.setPixmap(QIcon(_ICON_PATH).pixmap(QSize(48, 48)))
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(icon_label)
+
+        title = QLabel("<b>Sortique</b>  v1.0")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 16px;")
+        layout.addWidget(title)
+
+        desc = QLabel("A smart file organization tool.")
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc.setStyleSheet("color: #888888;")
+        layout.addWidget(desc)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(dlg.accept)
+        layout.addWidget(buttons)
+
+        dlg.exec()
+
     def _build_status_bar(self) -> None:
         status_bar = QStatusBar()
         self.setStatusBar(status_bar)
@@ -226,9 +288,39 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
 
     def closeEvent(self, event) -> None:
+        if self._is_processing():
+            reply = QMessageBox.warning(
+                self,
+                "Processing in Progress",
+                "Sortique is currently organizing files.\n\nStop and exit?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+
+            # Ask the OrganizeView to stop gracefully.
+            organize_view = self._stack.widget(0)
+            if hasattr(organize_view, "_on_stop"):
+                organize_view._on_stop()
+
         settings = QSettings("Sortique", "Sortique")
         settings.setValue("mainWindow/geometry", self.saveGeometry())
         super().closeEvent(event)
+
+    def _is_processing(self) -> bool:
+        """Return True if the OrganizeView has an active pipeline or scan."""
+        organize_view = self._stack.widget(0)
+        if organize_view is None:
+            return False
+        phase = getattr(organize_view, "_phase", None)
+        if phase is None:
+            return False
+        from sortique.ui.organize_view import _Phase
+        return phase in (
+            _Phase.SCANNING, _Phase.PREVIEWING, _Phase.ORGANIZING, _Phase.PAUSED,
+        )
 
 
 # ---------------------------------------------------------------------------
