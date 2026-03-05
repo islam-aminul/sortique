@@ -8,13 +8,19 @@ from __future__ import annotations
 import copy
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 from sortique.constants import MAX_THREADS
 
 # Package-level defaults shipped with the application.
-_DEFAULTS_PATH = Path(__file__).resolve().parent.parent / "config" / "defaults.json"
+# In a frozen PyInstaller build all data files land in sys._MEIPASS; the
+# normal source layout is used otherwise.
+if getattr(sys, "frozen", False):
+    _DEFAULTS_PATH = Path(sys._MEIPASS) / "config" / "defaults.json"
+else:
+    _DEFAULTS_PATH = Path(__file__).resolve().parent.parent / "config" / "defaults.json"
 
 
 class ConfigManager:

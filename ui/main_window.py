@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from typing import TYPE_CHECKING
 
@@ -28,10 +29,14 @@ if TYPE_CHECKING:
     from sortique.factory import AppFactory
 
 
-# Path to the bundled SVG icon (adjacent resources/ folder).
-_ICON_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "resources", "app_icon.svg"
-)
+# Resolve the resources/ directory whether running from source or a frozen
+# PyInstaller bundle (where data files land in sys._MEIPASS).
+if getattr(sys, "frozen", False):
+    _RESOURCES_DIR = os.path.join(sys._MEIPASS, "resources")
+else:
+    _RESOURCES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
+
+_ICON_PATH = os.path.join(_RESOURCES_DIR, "app_icon.svg")
 
 
 # ---------------------------------------------------------------------------
