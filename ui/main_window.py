@@ -131,13 +131,17 @@ class MainWindow(QMainWindow):
         # --- Content stack ---
         self._stack = QStackedWidget()
 
-        # Index 0: real Organize view
+        # Index 0: Organize view
         from sortique.ui.organize_view import OrganizeView
         self._stack.addWidget(OrganizeView(self._factory))
 
-        # Indexes 1–3: placeholders until those views are implemented
-        for nav_label in _NAV_ITEMS[1:]:
+        # Indexes 1–2: placeholders until those views are implemented
+        for nav_label in _NAV_ITEMS[1:3]:
             self._stack.addWidget(_make_placeholder(nav_label))
+
+        # Index 3: Settings view
+        from sortique.ui.settings_view import SettingsView
+        self._stack.addWidget(SettingsView(self._factory))
 
         root_layout.addWidget(self._sidebar)
         root_layout.addWidget(self._stack)
