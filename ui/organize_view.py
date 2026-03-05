@@ -5,11 +5,8 @@ from __future__ import annotations
 import enum
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
-    QDialogButtonBox,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -17,13 +14,13 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from sortique.data.models import FileRecord
 from sortique.ui.destination_selector import DestinationSelectorWidget
+from sortique.ui.dry_run_view import DryRunDialog
 from sortique.ui.source_selector import SourceSelectorWidget
 from sortique.ui.workers import DryRunWorker, PipelineWorker, ScanWorker
 
@@ -46,88 +43,6 @@ class _Phase(enum.Enum):
     ORGANIZING = "organizing"
     PAUSED = "paused"
     DONE = "done"
-
-
-# ---------------------------------------------------------------------------
-# Dry-run results dialog
-# ---------------------------------------------------------------------------
-
-class DryRunDialog(QDialog):
-    """Modal dialog that presents a DryRunSummary and asks the user to confirm."""
-
-    def __init__(self, summary: DryRunSummary, parent=None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Preview Results")
-        self.setMinimumWidth(480)
-        self.setModal(True)
-        self._build_ui(summary)
-
-    def _build_ui(self, s: DryRunSummary) -> None:
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-
-        # Summary numbers
-        summary_group = QGroupBox("Summary")
-        form = QFormLayout(summary_group)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        form.addRow("Total files:", QLabel(f"{s.total_files:,}"))
-        form.addRow("Files to copy:", QLabel(f"{s.files_to_copy:,}"))
-        form.addRow("Files to skip:", QLabel(f"{s.files_to_skip:,}"))
-        form.addRow("Duplicates found:", QLabel(f"{s.duplicates_found:,}"))
-        form.addRow(
-            "Estimated space needed:",
-            QLabel(_fmt_bytes(s.estimated_space_bytes)),
-        )
-        if s.space_check is not None:
-            if s.space_check.passes:
-                space_text = (
-                    f"OK  ({_fmt_bytes(s.space_check.available_bytes)} available)"
-                )
-                space_lbl = QLabel(space_text)
-            else:
-                shortfall = _fmt_bytes(s.space_check.shortfall_bytes)
-                space_lbl = QLabel(f"Insufficient — {shortfall} short")
-                space_lbl.setStyleSheet("color: #f44336; font-weight: bold;")
-            form.addRow("Disk space:", space_lbl)
-        layout.addWidget(summary_group)
-
-        # Category breakdown
-        if s.category_breakdown:
-            cat_group = QGroupBox("Category Breakdown")
-            cat_form = QFormLayout(cat_group)
-            cat_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-            for cat, count in sorted(
-                s.category_breakdown.items(), key=lambda kv: -kv[1]
-            ):
-                cat_form.addRow(f"{cat}:", QLabel(f"{count:,}"))
-            layout.addWidget(cat_group)
-
-        # Warnings
-        if s.warnings:
-            warn_group = QGroupBox("Warnings")
-            warn_layout = QVBoxLayout(warn_group)
-            warn_layout.setSpacing(4)
-            for msg in s.warnings:
-                lbl = QLabel(f"⚠  {msg}")
-                lbl.setWordWrap(True)
-                lbl.setStyleSheet("color: #ff9800;")
-                warn_layout.addWidget(lbl)
-            layout.addWidget(warn_group)
-
-        # Buttons
-        btn_box = QDialogButtonBox()
-        self._proceed_btn = btn_box.addButton(
-            "Proceed with Organize", QDialogButtonBox.ButtonRole.AcceptRole
-        )
-        btn_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
-
-        # Block proceed if there is definitely not enough space.
-        if s.space_check is not None and not s.space_check.passes:
-            self._proceed_btn.setEnabled(False)
-
-        btn_box.accepted.connect(self.accept)
-        btn_box.rejected.connect(self.reject)
-        layout.addWidget(btn_box)
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +381,7 @@ class OrganizeView(QWidget):
 
         dlg = DryRunDialog(summary, parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            self._commit_session_and_start(summary)
+            self._commit_session_and_start(summary, dlg.pair_policy)
 
     def _on_dryrun_error(self, msg: str) -> None:
         self._apply_phase(_Phase.SCANNED)
@@ -568,8 +483,14 @@ class OrganizeView(QWidget):
             )
         return records
 
-    def _commit_session_and_start(self, _summary: DryRunSummary) -> None:
+    def _commit_session_and_start(
+        self,
+        _summary: DryRunSummary,
+        pair_policy: PairPolicy | None = None,
+    ) -> None:
         """Create a real session, persist records, and launch the pipeline."""
+        from sortique.constants import PairPolicy, SessionState
+
         source_dirs = self._source_sel.source_dirs()
         dest = self._dest_sel.destination_dir()
 
@@ -579,10 +500,10 @@ class OrganizeView(QWidget):
             self._session_id = session.id
 
             # Transition PENDING → IN_PROGRESS
-            from sortique.constants import SessionState
             sm.transition(self._session_id, SessionState.IN_PROGRESS)
 
-            # Build and persist file records
+            # Build and persist file records; apply pair policy when selected.
+            effective_policy = pair_policy or PairPolicy.KEEP_BOTH
             records = []
             for sf in self._scan_result.files:
                 rec = FileRecord(
@@ -590,6 +511,7 @@ class OrganizeView(QWidget):
                     source_path=sf.path,
                     source_dir=sf.source_dir,
                     file_size=sf.size,
+                    pair_policy=effective_policy,
                 )
                 self._factory.db.create_file_record(rec)
                 records.append(rec)
