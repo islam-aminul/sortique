@@ -143,8 +143,9 @@ class MainWindow(QMainWindow):
         )
         self._stack.addWidget(sessions_view)
 
-        # Index 2: placeholder until Collection Review is implemented
-        self._stack.addWidget(_make_placeholder(_NAV_ITEMS[2]))
+        # Index 2: Collection Review view
+        from sortique.ui.collection_review_view import CollectionReviewView
+        self._stack.addWidget(CollectionReviewView(self._factory))
 
         # Index 3: Settings view
         from sortique.ui.settings_view import SettingsView
