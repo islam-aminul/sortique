@@ -135,9 +135,16 @@ class MainWindow(QMainWindow):
         from sortique.ui.organize_view import OrganizeView
         self._stack.addWidget(OrganizeView(self._factory))
 
-        # Indexes 1–2: placeholders until those views are implemented
-        for nav_label in _NAV_ITEMS[1:3]:
-            self._stack.addWidget(_make_placeholder(nav_label))
+        # Index 1: Sessions view
+        from sortique.ui.session_history_view import SessionHistoryView
+        sessions_view = SessionHistoryView(self._factory)
+        sessions_view.resume_requested.connect(
+            lambda _sid: self._sidebar.setCurrentRow(0)
+        )
+        self._stack.addWidget(sessions_view)
+
+        # Index 2: placeholder until Collection Review is implemented
+        self._stack.addWidget(_make_placeholder(_NAV_ITEMS[2]))
 
         # Index 3: Settings view
         from sortique.ui.settings_view import SettingsView
