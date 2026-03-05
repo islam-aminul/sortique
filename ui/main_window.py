@@ -28,10 +28,10 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 _NAV_ITEMS = [
-    ("Organize", "Organize View"),
-    ("Sessions", "Sessions View"),
-    ("Collection Review", "Collection Review View"),
-    ("Settings", "Settings View"),
+    "Organize",
+    "Sessions",
+    "Collection Review",
+    "Settings",
 ]
 
 
@@ -121,7 +121,7 @@ class MainWindow(QMainWindow):
             """
         )
 
-        for nav_label, _ in _NAV_ITEMS:
+        for nav_label in _NAV_ITEMS:
             item = QListWidgetItem(nav_label)
             self._sidebar.addItem(item)
 
@@ -130,8 +130,14 @@ class MainWindow(QMainWindow):
 
         # --- Content stack ---
         self._stack = QStackedWidget()
-        for _, placeholder_text in _NAV_ITEMS:
-            self._stack.addWidget(_make_placeholder(placeholder_text))
+
+        # Index 0: real Organize view
+        from sortique.ui.organize_view import OrganizeView
+        self._stack.addWidget(OrganizeView(self._factory))
+
+        # Indexes 1–3: placeholders until those views are implemented
+        for nav_label in _NAV_ITEMS[1:]:
+            self._stack.addWidget(_make_placeholder(nav_label))
 
         root_layout.addWidget(self._sidebar)
         root_layout.addWidget(self._stack)
