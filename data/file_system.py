@@ -91,7 +91,8 @@ class FileSystemHelper:
     @staticmethod
     def is_hidden_or_system(filepath: str) -> bool:
         """``True`` when the filename starts with ``.`` or is a known system file."""
-        name = os.path.basename(filepath)
+        # Normalise path separators so Windows-style paths work on all platforms.
+        name = os.path.basename(filepath.replace("\\", "/"))
         return name.startswith(".") or name in HIDDEN_SYSTEM_FILES
 
     @staticmethod

@@ -150,6 +150,13 @@ class Scanner:
             for entry in entries:
                 name = entry.name
 
+                # When not following symlinks, skip and count any symlink
+                # immediately — is_dir/is_file(follow_symlinks=False) returns
+                # False for symlinks, so they would otherwise be silently lost.
+                if not follow_symlinks and entry.is_symlink():
+                    result.skipped_symlinks += 1
+                    continue
+
                 # --- directories ---
                 if entry.is_dir(follow_symlinks=follow_symlinks):
                     if FS.is_skip_directory(name):
