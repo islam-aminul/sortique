@@ -199,7 +199,7 @@ class PathGenerator:
             ext = "." + ext
 
         raw_filename = f"{stem}{ext}" if ext else stem
-        return FileSystemHelper.sanitize_filename(raw_filename)
+        return FileSystemHelper.sanitize_filename(raw_filename, target_os="windows")
 
     def resolve_conflict(self, dest_path: str) -> str:
         """Append ``_1``, ``_2``, … before the extension until the path is free.
@@ -285,4 +285,4 @@ class PathGenerator:
         else:
             formatted = model.strip()  # type: ignore[union-attr]
 
-        return FileSystemHelper.sanitize_filename(formatted)
+        return FileSystemHelper.sanitize_filename(formatted, target_os="windows")
