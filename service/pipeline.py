@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from sortique.constants import FileStatus, FileType
 from sortique.data.database import Database
 from sortique.data.file_system import FileSystemHelper
+from sortique.data.hash_manifest import HashManifest
 from sortique.data.models import FileRecord
 
 if TYPE_CHECKING:
@@ -131,6 +132,10 @@ class Pipeline:
         self._video_processor = video_processor
         self._audio_processor = audio_processor
         self._document_processor = document_processor
+
+        # Load portable hash manifest for cross-machine dedup.
+        manifest = HashManifest(self._path_gen.destination_root)
+        self._dedup.load_manifest(manifest)
 
         # Per-file transient state (reset each file)
         self._exif_result = None
@@ -528,6 +533,17 @@ class Pipeline:
         """Persist the fully populated file record to the database."""
         if not self._dry_run:
             self._db.update_file_record(record)
+
+            # Record in portable manifest for cross-machine dedup.
+            if record.sha256_hash and record.destination_path:
+                rel = os.path.relpath(
+                    record.destination_path,
+                    self._path_gen.destination_root,
+                )
+                self._dedup.record_in_manifest(
+                    record.sha256_hash, rel, record.file_size,
+                )
+
         return True, None
 
     # ------------------------------------------------------------------

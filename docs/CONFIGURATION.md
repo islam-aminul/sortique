@@ -23,7 +23,7 @@ Config is loaded from `~/.sortique/config.json` (created on first run with defau
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `jpeg_quality` | int | `85` | JPEG compression quality for resized exports. Range: 1–100. |
+| `jpeg_quality` | int | `90` | JPEG compression quality for resized exports. Range: 1–100. |
 | `max_resolution` | [int, int] | `[3840, 2160]` | Maximum output resolution `[width, height]` for image exports. Originals and RAW files are downscaled to fit this box; aspect ratio is preserved. Default is 4K (UHD). |
 
 ### Screenshot Detection

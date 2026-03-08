@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Portable hash manifest for cross-machine / cross-user deduplication — stores SHA-256 hashes in `{destination}/.sortique/hash_manifest.db` so that files already organised are recognised even when the drive moves to a different computer or user
 - ExifTool as optional Tier 3 fallback for video metadata extraction (duration, dimensions, creation date, make, model)
 - Shared ExifTool utility module (`exiftool_common.py`) with cached availability detection, subprocess invocation, and date parsing
 - Tests for ExifTool video fallback and shared utilities

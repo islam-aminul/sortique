@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from collections.abc import Callable
@@ -13,7 +14,10 @@ from sortique.data.models import DuplicateGroup, FileRecord
 
 if TYPE_CHECKING:
     from sortique.data.database import Database
+    from sortique.data.hash_manifest import HashManifest
     from sortique.engine.hasher import FileHasher
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +66,59 @@ class DedupEngine:
         # mode (where DB writes happen later in the pipeline).
         self._hash_map: dict[str, FileRecord] = {}
         self._lock = threading.Lock()
+
+        # Portable hash manifest for cross-machine dedup.
+        self._manifest: HashManifest | None = None
+        self._manifest_hashes: dict[str, str] = {}  # sha256 → rel_path
+
+    # ------------------------------------------------------------------
+    # Portable manifest (cross-machine dedup)
+    # ------------------------------------------------------------------
+
+    def load_manifest(self, manifest: HashManifest) -> None:
+        """Load a portable hash manifest for cross-machine dedup.
+
+        Pre-populates ``_manifest_hashes`` so that files already
+        organised to the destination (possibly by a different machine
+        or user) are recognised as duplicates.
+
+        Safe to call multiple times — each call replaces the previous
+        manifest.  Never raises.
+        """
+        try:
+            # Clear stale in-memory state from a previous session /
+            # dry-run so that ghost records don't cause false positives.
+            self._hash_map.clear()
+
+            self._manifest = manifest
+            self._manifest_hashes = manifest.load_all()
+            logger.info(
+                "Loaded portable manifest with %d entries",
+                len(self._manifest_hashes),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to load portable hash manifest", exc_info=True,
+            )
+            self._manifest = None
+            self._manifest_hashes = {}
+
+    def record_in_manifest(
+        self, sha256: str, rel_path: str, file_size: int,
+    ) -> None:
+        """Write a successfully-organised file to the portable manifest.
+
+        Should be called after the file has been copied / moved to the
+        destination.  Never raises.
+        """
+        if self._manifest is None:
+            return
+        try:
+            self._manifest.add(sha256, rel_path, file_size)
+        except Exception:
+            logger.warning(
+                "Failed to record hash in portable manifest", exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Tier 1: exact byte matching
@@ -118,8 +175,18 @@ class DedupEngine:
         if existing is None:
             existing = self.db.get_file_by_hash(session_id, sha)
 
-        # --- no match → register and return ---
+        # --- no match in current session → check portable manifest ---
         if existing is None or existing.id == file_record.id:
+            if sha in self._manifest_hashes:
+                # File with this hash was already organised to the
+                # destination (possibly by a different machine / user).
+                return DedupResult(
+                    is_duplicate=True,
+                    original_file_id=None,
+                    duplicate_group_id=None,
+                    bytes_saved=file_record.file_size or 0,
+                )
+
             self._hash_map[sha] = file_record
             return DedupResult(
                 is_duplicate=False,

@@ -12,6 +12,7 @@ import pytest
 from sortique.constants import DupMatchType, FileStatus, FileType, SessionState
 from sortique.data.database import Database
 from sortique.data.models import DuplicateGroup, FileRecord, Session
+from sortique.data.hash_manifest import HashManifest
 from sortique.engine.dedup import DedupEngine, DedupResult, PerceptualMatch
 from sortique.engine.hasher import FileHasher
 
@@ -768,3 +769,147 @@ class TestThreadSafety:
 
         assert all(not r.is_duplicate for r in results)
         assert len(engine._hash_map) == num_files
+
+
+# ===========================================================================
+# 9.  Portable manifest integration
+# ===========================================================================
+
+class TestManifestDedup:
+    """Verify that the portable hash manifest enables cross-machine dedup."""
+
+    def test_manifest_detects_cross_machine_duplicate(self, db, hasher, tmp_path):
+        """A file whose hash is in the manifest is flagged as duplicate."""
+        engine = DedupEngine(db, hasher)
+
+        # Simulate a manifest from a previous session on another machine.
+        manifest = HashManifest(str(tmp_path / "dest"))
+        manifest.add("cross-hash", "Images/photo.jpg", 5000)
+
+        engine.load_manifest(manifest)
+
+        rec = _record(
+            rid="file-new", source_path="/src/photo.jpg",
+            sha256="cross-hash", file_size=5000,
+        )
+        result = engine.check_duplicate(rec, "sess-1")
+
+        assert result.is_duplicate is True
+        assert result.bytes_saved == 5000
+        # No group or original_file_id for cross-machine duplicates.
+        assert result.original_file_id is None
+        assert result.duplicate_group_id is None
+
+    def test_manifest_hash_not_found(self, db, hasher, tmp_path):
+        """A hash NOT in the manifest proceeds normally."""
+        engine = DedupEngine(db, hasher)
+
+        manifest = HashManifest(str(tmp_path / "dest"))
+        manifest.add("other-hash", "Images/other.jpg", 3000)
+        engine.load_manifest(manifest)
+
+        rec = _record(
+            rid="file-new", source_path="/src/new.jpg",
+            sha256="brand-new-hash", file_size=2000,
+        )
+        result = engine.check_duplicate(rec, "sess-1")
+
+        assert result.is_duplicate is False
+        assert "brand-new-hash" in engine._hash_map
+
+    def test_hash_map_takes_priority_over_manifest(self, db, hasher, tmp_path):
+        """In-memory hash map match is used before checking manifest."""
+        engine = DedupEngine(db, hasher)
+
+        # Load manifest that contains a hash.
+        manifest = HashManifest(str(tmp_path / "dest"))
+        manifest.add("shared-hash", "Images/manifest-copy.jpg", 1000)
+        engine.load_manifest(manifest)
+
+        # First file registers in hash_map (manifest also has the hash,
+        # but check_duplicate hits the manifest first for the first call).
+        first = _record(
+            rid="file-first", source_path="/src/a.jpg", sha256="shared-hash",
+        )
+        r1 = engine.check_duplicate(first, "sess-1")
+        assert r1.is_duplicate is True  # caught by manifest
+
+        # Now register a different hash in the hash_map so it gets priority.
+        unique = _record(
+            rid="file-unique", source_path="/src/unique.jpg", sha256="map-only-hash",
+        )
+        r_unique = engine.check_duplicate(unique, "sess-1")
+        assert r_unique.is_duplicate is False
+        assert "map-only-hash" in engine._hash_map
+
+        # Second file with that hash — hash_map match takes priority,
+        # resulting in group-based dedup with a duplicate_group_id.
+        second = _record(
+            rid="file-second", source_path="/src/backup/unique.jpg",
+            sha256="map-only-hash",
+        )
+        r2 = engine.check_duplicate(second, "sess-1")
+        assert r2.is_duplicate is True
+        # Matched via hash_map → proper duplicate group created.
+        assert r2.duplicate_group_id is not None
+
+    def test_record_in_manifest_writes(self, db, hasher, tmp_path):
+        """record_in_manifest() adds an entry to the manifest DB."""
+        engine = DedupEngine(db, hasher)
+
+        manifest = HashManifest(str(tmp_path / "dest"))
+        engine.load_manifest(manifest)
+
+        engine.record_in_manifest("new-hash", "Videos/clip.mp4", 8000)
+
+        # Verify by loading a fresh manifest from the same path.
+        manifest2 = HashManifest(str(tmp_path / "dest"))
+        entries = manifest2.load_all()
+        assert entries == {"new-hash": "Videos/clip.mp4"}
+        manifest2.close()
+
+    def test_no_manifest_loaded_no_error(self, db, hasher):
+        """Without loading a manifest, everything works as before."""
+        engine = DedupEngine(db, hasher)
+        # _manifest is None — no load_manifest() called.
+
+        rec = _record(rid="file-1", sha256="solo-hash")
+        result = engine.check_duplicate(rec, "sess-1")
+
+        assert result.is_duplicate is False
+        assert "solo-hash" in engine._hash_map
+
+        # record_in_manifest is a no-op.
+        engine.record_in_manifest("solo-hash", "Images/photo.jpg", 1000)
+
+    def test_load_manifest_clears_stale_hash_map(self, db, hasher, tmp_path):
+        """load_manifest() clears _hash_map so dry-run ghosts don't persist."""
+        engine = DedupEngine(db, hasher)
+
+        # Simulate a dry-run populating _hash_map.
+        rec = _record(rid="dry-run-file", sha256="stale-hash")
+        engine.check_duplicate(rec, "sess-1")
+        assert "stale-hash" in engine._hash_map
+
+        # Loading a new manifest (as happens when a new Pipeline is created)
+        # should clear the stale entries.
+        manifest = HashManifest(str(tmp_path / "dest"))
+        engine.load_manifest(manifest)
+
+        assert engine._hash_map == {}
+
+    def test_manifest_load_populates_hashes(self, db, hasher, tmp_path):
+        """load_manifest() populates _manifest_hashes from the DB."""
+        engine = DedupEngine(db, hasher)
+
+        manifest = HashManifest(str(tmp_path / "dest"))
+        manifest.add("h1", "Images/a.jpg", 1000)
+        manifest.add("h2", "Images/b.jpg", 2000)
+        manifest.add("h3", "Videos/c.mp4", 3000)
+
+        engine.load_manifest(manifest)
+
+        assert len(engine._manifest_hashes) == 3
+        assert engine._manifest_hashes["h1"] == "Images/a.jpg"
+        assert engine._manifest_hashes["h2"] == "Images/b.jpg"
+        assert engine._manifest_hashes["h3"] == "Videos/c.mp4"

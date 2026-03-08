@@ -27,3 +27,16 @@ env/
 Thumbs.db
 *.swp
 *.swo
+*.idea/
+.vscode/
+
+# Sortique runtime data
+.sortique/
+
+# User config (created at runtime)
+config.json
+
+# Secrets / credentials
+.env
+*.pem
+*.key

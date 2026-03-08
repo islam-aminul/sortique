@@ -1,5 +1,5 @@
 {
-  "jpeg_quality": 85,
+  "jpeg_quality": 90,
   "max_resolution": [3840, 2160],
   "threads": 4,
   "verify_copies": false,

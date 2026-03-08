@@ -538,8 +538,8 @@ class TestExifPreservation:
 class TestJpegQuality:
 
     def test_default_quality(self, proc, tmp_path):
-        """Default quality is 85."""
-        assert proc.config.jpeg_quality == 85
+        """Default quality is 90."""
+        assert proc.config.jpeg_quality == 90
 
     def test_custom_quality_smaller_file(self, tmp_path):
         """Lower quality should produce a smaller file."""

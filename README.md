@@ -112,7 +112,7 @@ See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the full reference.
 | Option | Default | Description |
 |---|---|---|
 | `threads` | `4` | Worker threads (1–16) |
-| `jpeg_quality` | `85` | Export JPEG quality (1–100) |
+| `jpeg_quality` | `90` | Export JPEG quality (1–100) |
 | `verify_copies` | `false` | Checksum-verify each copied file |
 | `follow_symlinks` | `false` | Follow symbolic links when scanning |
 | `musicbrainz_enabled` | `false` | Enable MusicBrainz audio lookups |
