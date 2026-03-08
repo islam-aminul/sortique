@@ -174,7 +174,9 @@ class SessionHistoryView(QWidget):
         hdr.setSectionResizeMode(_COL_SOURCES, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(_COL_DEST,    QHeaderView.ResizeMode.Stretch)
 
-        self._table.currentRowChanged.connect(self._on_row_changed)
+        self._table.currentCellChanged.connect(
+            lambda row, _col, _prev_row, _prev_col: self._on_row_changed(row)
+        )
         return self._table
 
     def _build_detail_panel(self) -> QWidget:

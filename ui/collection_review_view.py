@@ -236,7 +236,9 @@ class CollectionReviewView(QWidget):
         hdr.resizeSection(_COL_CONF, 110)
         hdr.resizeSection(_COL_FILENAME, 190)
 
-        self._table.currentRowChanged.connect(self._on_row_changed)
+        self._table.currentCellChanged.connect(
+            lambda row, _col, _prev_row, _prev_col: self._on_row_changed(row)
+        )
         self._table.itemSelectionChanged.connect(self._update_action_buttons)
 
         layout.addWidget(self._table, 1)

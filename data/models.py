@@ -69,7 +69,7 @@ class Session:
     def from_dict(cls, data: dict) -> Session:
         return cls(
             id=data["id"],
-            state=SessionState(data["state"]),
+            state=SessionState(data["state"].lower()),
             created_at=datetime.fromisoformat(data["created_at"]),
             updated_at=datetime.fromisoformat(data["updated_at"]),
             source_dirs=data["source_dirs"] if isinstance(data["source_dirs"], list) else json.loads(data["source_dirs"]),
