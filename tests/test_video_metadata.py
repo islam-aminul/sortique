@@ -313,9 +313,25 @@ class TestFallbackChain:
     def test_all_fail_returns_duration_unknown(self, extractor, tmp_path):
         f = tmp_path / "garbage.bin"
         f.write_bytes(b"\x00" * 50)
-        with patch.object(extractor, "_extract_ffprobe", return_value=None):
+        with (
+            patch.object(extractor, "_extract_ffprobe", return_value=None),
+            patch.object(extractor, "_extract_exiftool", return_value=None),
+        ):
             result = extractor.extract(str(f))
         assert result.duration_unknown is True
+
+    def test_non_mp4_no_ffprobe_tries_exiftool(self, extractor, tmp_path):
+        """When both MP4 parsing and ffprobe fail, ExifTool is tried."""
+        f = tmp_path / "clip.avi"
+        f.write_bytes(b"RIFF" + b"\x00" * 100)
+        mock_meta = VideoMetadata(duration_seconds=15.0, width=1920, height=1080)
+        with (
+            patch.object(extractor, "_extract_ffprobe", return_value=None),
+            patch.object(extractor, "_extract_exiftool", return_value=mock_meta) as mock_et,
+        ):
+            result = extractor.extract(str(f))
+            mock_et.assert_called_once()
+        assert result.duration_seconds == 15.0
 
     def test_extract_never_raises(self, extractor, tmp_path):
         """Even pathological input must not raise."""
@@ -326,15 +342,86 @@ class TestFallbackChain:
 
 
 # ===========================================================================
-# 5. is_ffprobe_available
+# 5. ExifTool fallback
 # ===========================================================================
 
-class TestFfprobeAvailability:
+class TestExifToolFallback:
+
+    def test_parses_duration_and_dimensions(self, extractor):
+        d = {"Duration": 12.345, "ImageWidth": 640, "ImageHeight": 480}
+        result = extractor._parse_exiftool_json(d)
+        assert result.duration_seconds == 12.345
+        assert result.width == 640
+        assert result.height == 480
+
+    def test_parses_creation_date(self, extractor):
+        d = {"Duration": 10, "CreateDate": "2024:06:15 10:30:00"}
+        result = extractor._parse_exiftool_json(d)
+        assert result.date is not None
+        assert result.date.year == 2024
+        assert result.date.month == 6
+
+    def test_prefers_datetime_original(self, extractor):
+        d = {
+            "DateTimeOriginal": "2024:01:01 08:00:00",
+            "CreateDate": "2024:06:15 10:30:00",
+        }
+        result = extractor._parse_exiftool_json(d)
+        assert result.date.month == 1
+
+    def test_parses_make_model(self, extractor):
+        d = {"Duration": 5, "Make": "Apple", "Model": "iPhone 15 Pro"}
+        result = extractor._parse_exiftool_json(d)
+        assert result.make == "Apple"
+        assert result.model == "iPhone 15 Pro"
+
+    def test_missing_duration(self, extractor):
+        d = {"ImageWidth": 1920, "ImageHeight": 1080}
+        result = extractor._parse_exiftool_json(d)
+        assert result.duration_seconds is None
+        assert result.duration_unknown is True
+
+    def test_empty_dict(self, extractor):
+        result = extractor._parse_exiftool_json({})
+        assert result.duration_unknown is True
+        assert result.make is None
+        assert result.model is None
+
+    def test_whitespace_make_model_treated_as_none(self, extractor):
+        d = {"Make": "   ", "Model": ""}
+        result = extractor._parse_exiftool_json(d)
+        assert result.make is None
+        assert result.model is None
+
+    def test_non_string_make_treated_as_none(self, extractor):
+        d = {"Make": 12345}
+        result = extractor._parse_exiftool_json(d)
+        assert result.make is None
+
+    @patch("sortique.engine.metadata.video_metadata._run_exiftool", return_value=None)
+    def test_returns_none_when_exiftool_fails(self, mock_run, extractor):
+        result = extractor._extract_exiftool("bad.mp4")
+        assert result is None
+
+
+# ===========================================================================
+# 6. is_ffprobe_available / is_exiftool_available
+# ===========================================================================
+
+class TestToolAvailability:
 
     @patch("sortique.engine.metadata.video_metadata.shutil.which", return_value="/usr/bin/ffprobe")
-    def test_available(self, mock_which):
+    def test_ffprobe_available(self, mock_which):
         assert VideoMetadataExtractor.is_ffprobe_available() is True
 
     @patch("sortique.engine.metadata.video_metadata.shutil.which", return_value=None)
-    def test_not_available(self, mock_which):
+    def test_ffprobe_not_available(self, mock_which):
         assert VideoMetadataExtractor.is_ffprobe_available() is False
+
+    @patch("sortique.engine.metadata.video_metadata._is_exiftool_available", return_value=True)
+    def test_exiftool_available(self, mock_avail):
+        assert VideoMetadataExtractor.is_exiftool_available() is True
+
+    @patch("sortique.engine.metadata.video_metadata._is_exiftool_available", return_value=False)
+    def test_exiftool_not_available(self, mock_avail):
+        assert VideoMetadataExtractor.is_exiftool_available() is False

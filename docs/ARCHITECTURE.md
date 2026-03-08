@@ -99,9 +99,11 @@ Defines all shared enumerations (`FileType`, `SessionState`, `FileStatus`, `Date
 
 **`metadata/date_parser.py`** — `DateParser` tries, in order: EXIF `DateTimeOriginal`, configurable filename regex patterns, file modification time. Returns a `DateResult` with the resolved `datetime` and source provenance.
 
-**`metadata/exif_extractor.py`** — `ExifExtractor` wraps `piexif` and `Pillow` to read make, model, software, orientation, width, height, and `DateTimeOriginal`. Returns an `ExifResult` with an `ExifStatus` enum (ok / partial / error / none).
+**`metadata/exif_extractor.py`** — `ExifExtractor` wraps `piexif` and `Pillow` (Tier 1) to read make, model, software, orientation, width, height, and `DateTimeOriginal`. Falls back to ExifTool subprocess (Tier 2) via shared utilities when Tier 1 returns partial or no data. Returns an `ExifResult` with an `ExifStatus` enum (ok / partial / error / none).
 
-**`metadata/video_metadata.py`** — `VideoMetadataExtractor` calls `ffprobe` (subprocess) to read duration, codec, resolution, and creation time from video container metadata.
+**`metadata/video_metadata.py`** — `VideoMetadataExtractor` uses a three-tier fallback chain: binary MP4/MOV atom parsing (Tier 1), `ffprobe` subprocess (Tier 2), and `exiftool` subprocess (Tier 3, optional) to read duration, resolution, creation time, make, and model from video container metadata.
+
+**`metadata/exiftool_common.py`** — Shared ExifTool subprocess utilities: cached availability detection (`is_exiftool_available`), JSON invocation (`run_exiftool`), and date parsing (`parse_exiftool_date`). Used by both `ExifExtractor` and `VideoMetadataExtractor`.
 
 **`metadata/audio_metadata.py`** — `AudioMetadataExtractor` uses Mutagen to read ID3 (MP3), MP4, FLAC, OGG, and other tag formats. Extracts title, artist, album, track number, and duration.
 

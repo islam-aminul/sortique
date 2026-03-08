@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Generator
@@ -30,7 +31,8 @@ class Database:
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
-        self._conn = sqlite3.connect(db_path)
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
@@ -40,16 +42,22 @@ class Database:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
+        """Thread-safe read query."""
+        with self._lock:
+            return self._conn.execute(sql, params)
+
     @contextmanager
     def _transaction(self) -> Generator[sqlite3.Cursor, None, None]:
-        cur = self._conn.cursor()
-        try:
-            cur.execute("BEGIN")
-            yield cur
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
+        with self._lock:
+            cur = self._conn.cursor()
+            try:
+                cur.execute("BEGIN")
+                yield cur
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def _create_tables(self) -> None:
         self._conn.executescript("""
@@ -179,7 +187,7 @@ class Database:
         return session
 
     def get_session(self, session_id: str) -> Session | None:
-        row = self._conn.execute(
+        row = self._execute(
             "SELECT * FROM sessions WHERE id = ?", (session_id,)
         ).fetchone()
         return self._row_to_session(row) if row else None
@@ -206,11 +214,11 @@ class Database:
 
     def list_sessions(self, include_archived: bool = False) -> list[Session]:
         if include_archived:
-            rows = self._conn.execute(
+            rows = self._execute(
                 "SELECT * FROM sessions ORDER BY created_at DESC"
             ).fetchall()
         else:
-            rows = self._conn.execute(
+            rows = self._execute(
                 "SELECT * FROM sessions WHERE is_archived = 0 ORDER BY created_at DESC"
             ).fetchall()
         return [self._row_to_session(r) for r in rows]
@@ -305,26 +313,26 @@ class Database:
         self, session_id: str, status: FileStatus | None = None
     ) -> list[FileRecord]:
         if status is not None:
-            rows = self._conn.execute(
+            rows = self._execute(
                 "SELECT * FROM file_records WHERE session_id = ? AND status = ?",
                 (session_id, status.value),
             ).fetchall()
         else:
-            rows = self._conn.execute(
+            rows = self._execute(
                 "SELECT * FROM file_records WHERE session_id = ?",
                 (session_id,),
             ).fetchall()
         return [self._row_to_file_record(r) for r in rows]
 
     def get_pending_files(self, session_id: str) -> list[FileRecord]:
-        rows = self._conn.execute(
+        rows = self._execute(
             "SELECT * FROM file_records WHERE session_id = ? AND status IN (?, ?)",
             (session_id, FileStatus.PENDING.value, FileStatus.PROCESSING.value),
         ).fetchall()
         return [self._row_to_file_record(r) for r in rows]
 
     def get_file_by_hash(self, session_id: str, sha256: str) -> FileRecord | None:
-        row = self._conn.execute(
+        row = self._execute(
             "SELECT * FROM file_records WHERE session_id = ? AND sha256_hash = ? LIMIT 1",
             (session_id, sha256),
         ).fetchone()
@@ -350,7 +358,7 @@ class Database:
         return group
 
     def get_duplicate_groups(self, session_id: str) -> list[DuplicateGroup]:
-        rows = self._conn.execute(
+        rows = self._execute(
             "SELECT * FROM duplicate_groups WHERE session_id = ?",
             (session_id,),
         ).fetchall()
@@ -374,7 +382,7 @@ class Database:
             )
 
     def get_manifest(self, session_id: str) -> list[SourceManifestEntry]:
-        rows = self._conn.execute(
+        rows = self._execute(
             "SELECT * FROM source_manifest WHERE session_id = ?",
             (session_id,),
         ).fetchall()
@@ -383,7 +391,7 @@ class Database:
     def get_manifest_entry(
         self, session_id: str, file_path: str
     ) -> SourceManifestEntry | None:
-        row = self._conn.execute(
+        row = self._execute(
             "SELECT * FROM source_manifest WHERE session_id = ? AND file_path = ? LIMIT 1",
             (session_id, file_path),
         ).fetchone()
@@ -394,7 +402,8 @@ class Database:
     # ------------------------------------------------------------------
 
     def vacuum(self) -> None:
-        self._conn.execute("VACUUM")
+        with self._lock:
+            self._conn.execute("VACUUM")
 
     def close(self) -> None:
         self._conn.close()

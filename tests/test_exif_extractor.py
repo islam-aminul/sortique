@@ -530,16 +530,26 @@ class TestNoThumbnail:
 
 class TestExifToolAvailability:
 
+    def setup_method(self):
+        from sortique.engine.metadata.exiftool_common import is_exiftool_available
+        is_exiftool_available.cache_clear()
+
     def test_is_exiftool_available_returns_bool(self):
+        from sortique.engine.metadata.exiftool_common import is_exiftool_available
+        is_exiftool_available.cache_clear()
         result = ExifExtractor.is_exiftool_available()
         assert isinstance(result, bool)
 
     def test_exiftool_mock_not_available(self):
-        with patch("sortique.engine.metadata.exif_extractor.shutil.which", return_value=None):
+        from sortique.engine.metadata.exiftool_common import is_exiftool_available
+        is_exiftool_available.cache_clear()
+        with patch("sortique.engine.metadata.exiftool_common.shutil.which", return_value=None):
             assert ExifExtractor.is_exiftool_available() is False
 
     def test_exiftool_mock_available(self):
-        with patch("sortique.engine.metadata.exif_extractor.shutil.which", return_value="/usr/bin/exiftool"):
+        from sortique.engine.metadata.exiftool_common import is_exiftool_available
+        is_exiftool_available.cache_clear()
+        with patch("sortique.engine.metadata.exiftool_common.shutil.which", return_value="/usr/bin/exiftool"):
             assert ExifExtractor.is_exiftool_available() is True
 
 

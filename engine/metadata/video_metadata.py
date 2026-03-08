@@ -9,6 +9,12 @@ import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from sortique.engine.metadata.exiftool_common import (
+    is_exiftool_available as _is_exiftool_available,
+    parse_exiftool_date as _parse_exiftool_date,
+    run_exiftool as _run_exiftool,
+)
+
 
 # ---------------------------------------------------------------------------
 # Result container
@@ -45,7 +51,8 @@ class VideoMetadataExtractor:
 
     1. Binary parsing of MP4/MOV container atoms.
     2. ``ffprobe`` subprocess.
-    3. Return a result with ``duration_unknown=True``.
+    3. ``exiftool`` subprocess (when installed).
+    4. Return a result with ``duration_unknown=True``.
     """
 
     # ------------------------------------------------------------------
@@ -63,6 +70,13 @@ class VideoMetadataExtractor:
 
         try:
             result = self._extract_ffprobe(filepath)
+            if result is not None:
+                return result
+        except Exception:
+            pass
+
+        try:
+            result = self._extract_exiftool(filepath)
             if result is not None:
                 return result
         except Exception:
@@ -388,6 +402,77 @@ class VideoMetadataExtractor:
                     break
                 except ValueError:
                     continue
+
+        return VideoMetadata(
+            duration_seconds=duration,
+            make=make,
+            model=model,
+            date=date,
+            width=width,
+            height=height,
+            duration_unknown=(duration is None),
+        )
+
+    # ------------------------------------------------------------------
+    # Tier 3 — ExifTool subprocess
+    # ------------------------------------------------------------------
+
+    def _extract_exiftool(self, filepath: str) -> VideoMetadata | None:
+        """Use ExifTool for video metadata.  Returns ``None`` on any failure."""
+        d = _run_exiftool(filepath)
+        if d is None:
+            return None
+
+        return self._parse_exiftool_json(d)
+
+    @staticmethod
+    def is_exiftool_available() -> bool:
+        """Return ``True`` if ``exiftool`` is on *PATH*."""
+        return _is_exiftool_available()
+
+    @staticmethod
+    def _parse_exiftool_json(d: dict) -> VideoMetadata:
+        """Turn ExifTool JSON dict into a :class:`VideoMetadata`."""
+        # Duration: ExifTool reports Duration in seconds (with -n flag).
+        duration: float | None = None
+        raw_dur = d.get("Duration")
+        if raw_dur is not None:
+            try:
+                duration = round(float(raw_dur), 3)
+            except (ValueError, TypeError):
+                pass
+
+        # Dimensions
+        width: int | None = None
+        height: int | None = None
+        raw_w = d.get("ImageWidth")
+        raw_h = d.get("ImageHeight")
+        if raw_w is not None and raw_h is not None:
+            try:
+                width = int(raw_w)
+                height = int(raw_h)
+            except (ValueError, TypeError):
+                pass
+
+        # Make / Model
+        make = d.get("Make")
+        model = d.get("Model")
+        if isinstance(make, str):
+            make = make.strip() or None
+        else:
+            make = None
+        if isinstance(model, str):
+            model = model.strip() or None
+        else:
+            model = None
+
+        # Creation date: ExifTool uses several tag names for video dates.
+        date: datetime | None = None
+        for key in ("DateTimeOriginal", "CreateDate",
+                     "MediaCreateDate", "TrackCreateDate"):
+            date = _parse_exiftool_date(d.get(key))
+            if date is not None:
+                break
 
         return VideoMetadata(
             duration_seconds=duration,

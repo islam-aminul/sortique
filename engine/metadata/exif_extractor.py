@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -12,6 +9,10 @@ import piexif
 from PIL import Image
 
 from sortique.constants import ExifStatus
+from sortique.engine.metadata.exiftool_common import (
+    is_exiftool_available as _is_exiftool_available,
+    run_exiftool as _run_exiftool,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -263,37 +264,19 @@ class ExifExtractor:
     # ------------------------------------------------------------------
 
     def _extract_exiftool(self, filepath: str) -> ExifResult:
-        """Fallback: call ``exiftool -json -n <filepath>`` and parse JSON.
+        """Fallback: call ``exiftool -json -n <filepath>`` via shared utility.
 
         Returns an :class:`ExifResult` with ``status=ERROR`` if exiftool
         is not available or the subprocess fails.
         """
-        if not self.is_exiftool_available():
+        d = _run_exiftool(filepath)
+        if d is None:
             return ExifResult(
                 status=ExifStatus.ERROR,
-                error_message="exiftool not available",
+                error_message="exiftool not available or failed",
             )
 
         try:
-            proc = subprocess.run(
-                ["exiftool", "-json", "-n", filepath],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if proc.returncode != 0:
-                return ExifResult(
-                    status=ExifStatus.ERROR,
-                    error_message=f"exiftool exited {proc.returncode}: "
-                                  f"{proc.stderr.strip()}",
-                )
-
-            data = json.loads(proc.stdout)
-            if not data:
-                return ExifResult(status=ExifStatus.NONE)
-
-            d = data[0]
-
             make = d.get("Make")
             model = d.get("Model")
             software = d.get("Software")
@@ -414,7 +397,7 @@ class ExifExtractor:
     @staticmethod
     def is_exiftool_available() -> bool:
         """Return ``True`` when ``exiftool`` is found on the system PATH."""
-        return shutil.which("exiftool") is not None
+        return _is_exiftool_available()
 
 
 # ---------------------------------------------------------------------------

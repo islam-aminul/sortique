@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.0] — 2026-03-08
+
+### Added
+
+- ExifTool as optional Tier 3 fallback for video metadata extraction (duration, dimensions, creation date, make, model)
+- Shared ExifTool utility module (`exiftool_common.py`) with cached availability detection, subprocess invocation, and date parsing
+- Tests for ExifTool video fallback and shared utilities
+
+### Changed
+
+- Video metadata fallback chain expanded: binary MP4 parsing → ffprobe → exiftool → empty fallback
+- ExifTool availability check is now cached per process (was re-checked on every call)
+- EXIF extractor delegates subprocess logic to shared `exiftool_common` module
+
+### Fixed
+
+- SQLite threading error when accessing database from worker threads
+- `QTableWidget.currentRowChanged` signal compatibility with PySide6
+- Case-insensitive enum deserialization in model `from_dict` methods
+
+---
+
 ## [1.0.0] — 2026-03-06
 
 ### Added

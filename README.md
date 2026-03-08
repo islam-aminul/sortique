@@ -11,7 +11,7 @@ Sortique is a smart desktop file organizer that automatically categorizes, dedup
 - **Smart categorization** — Screenshots, Originals, RAW, Edited, Social Media, Motion Photos, Voice Notes, Bursts, Movies, Songs, Documents, and more
 - **Two-tier deduplication** — exact SHA-256 matching + perceptual image hashing (phash)
 - **RAW + JPEG pairing** — links sidecar pairs with configurable keep policy
-- **Metadata extraction** — EXIF (Pillow/piexif), video streams (FFmpeg), audio tags (Mutagen), MusicBrainz lookup (optional)
+- **Metadata extraction** — EXIF (Pillow/piexif), video streams (FFmpeg/ExifTool), audio tags (Mutagen), MusicBrainz lookup (optional)
 - **Date resolution** — EXIF → filename regex → filesystem mtime fallback
 - **Dry-run preview** — inspect organization plan and space savings before committing
 - **Undo** — revert completed sessions back to source
@@ -42,6 +42,14 @@ pip install sortique
 - FFmpeg on `PATH` (video metadata extraction)
 - libmagic (magic-byte detection — `brew install libmagic` / `apt install libmagic1`)
 
+**Optional external tools:**
+
+| Tool | Purpose | Install |
+|---|---|---|
+| [ExifTool](https://exiftool.org/) | Universal metadata fallback for images and video when native Python packages are unavailable | `brew install exiftool` / `apt install libimage-exiftool-perl` / [Windows download](https://exiftool.org/) |
+
+> **Windows ARM64 note:** Several native packages (`rawpy`, `pillow-heif`, `python-magic`) do not yet ship pre-built wheels for Windows ARM64. When these packages are missing, Sortique degrades gracefully but some file types (HEIC, RAW) will lack metadata. Installing ExifTool on your `PATH` restores full metadata extraction for all supported file types via a subprocess fallback.
+
 **Python dependencies** (installed automatically):
 
 | Package | Purpose |
@@ -55,6 +63,14 @@ pip install sortique
 | imagehash | Perceptual hashing |
 | python-magic | Magic-byte detection |
 | musicbrainzngs | MusicBrainz lookup (optional) |
+
+> Packages marked with ★ below are optional — the app runs without them but with reduced functionality:
+>
+> | Package | What happens if missing |
+> |---|---|
+> | rawpy | RAW image decoding disabled; ExifTool can still extract metadata |
+> | pillow-heif | HEIC/HEIF decoding disabled; ExifTool can still extract metadata |
+> | python-magic | Falls back to extension-based file type detection |
 
 ---
 
