@@ -487,32 +487,32 @@ class TestResolveConflict:
         with open(target, "w") as f:
             f.write("x")
         resolved = gen.resolve_conflict(target)
-        assert resolved == J(dest, "photo_1.jpg")
+        assert resolved == J(dest, "photo-1.jpg")
 
     def test_multiple_conflicts(self, gen, dest):
         base = J(dest, "photo.jpg")
-        # Create original + _1 + _2
-        for suffix in ("", "_1", "_2"):
+        # Create original + -1 + -2
+        for suffix in ("", "-1", "-2"):
             stem, ext = os.path.splitext(base)
             path = f"{stem}{suffix}{ext}" if suffix else base
             with open(path, "w") as f:
                 f.write("x")
         resolved = gen.resolve_conflict(base)
-        assert resolved == J(dest, "photo_3.jpg")
+        assert resolved == J(dest, "photo-3.jpg")
 
     def test_preserves_extension(self, gen, dest):
         target = J(dest, "clip.mp4")
         with open(target, "w") as f:
             f.write("x")
         resolved = gen.resolve_conflict(target)
-        assert resolved.endswith("_1.mp4")
+        assert resolved.endswith("-1.mp4")
 
     def test_no_extension(self, gen, dest):
         target = J(dest, "README")
         with open(target, "w") as f:
             f.write("x")
         resolved = gen.resolve_conflict(target)
-        assert resolved == J(dest, "README_1")
+        assert resolved == J(dest, "README-1")
 
     def test_exhaustion_raises(self, gen, dest, monkeypatch):
         """All attempts exhausted → FileExistsError."""
@@ -520,7 +520,7 @@ class TestResolveConflict:
             "sortique.engine.path_generator.MAX_CONFLICT_ATTEMPTS", 3,
         )
         target = J(dest, "photo.jpg")
-        for suffix in ("", "_1", "_2", "_3"):
+        for suffix in ("", "-1", "-2", "-3"):
             stem, ext = os.path.splitext(target)
             path = f"{stem}{suffix}{ext}" if suffix else target
             with open(path, "w") as f:

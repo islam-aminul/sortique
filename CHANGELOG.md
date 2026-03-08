@@ -19,9 +19,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Video metadata fallback chain expanded: binary MP4 parsing → ffprobe → exiftool → empty fallback
 - ExifTool availability check is now cached per process (was re-checked on every call)
 - EXIF extractor delegates subprocess logic to shared `exiftool_common` module
+- Filename conflict suffix changed from `_N` to `-N` (e.g. `photo-1.jpg` instead of `photo_1.jpg`)
 
 ### Fixed
 
+- **Duplicate detection not working**: `DedupEngine` now uses an in-memory SHA-256 hash map instead of relying solely on database queries; fixes both dry-run mode (where DB writes are skipped) and multi-threaded race conditions (where hashes weren't persisted to DB until later pipeline stages)
+- Thread-safe duplicate group updates (uses `_transaction()` instead of raw `_conn` access)
 - SQLite threading error when accessing database from worker threads
 - `QTableWidget.currentRowChanged` signal compatibility with PySide6
 - Case-insensitive enum deserialization in model `from_dict` methods

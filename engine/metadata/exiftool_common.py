@@ -10,8 +10,15 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from functools import lru_cache
+
+# On Windows, prevent a visible cmd.exe window from flashing when
+# launching subprocesses from a GUI application.
+_SUBPROCESS_FLAGS: int = (
+    subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+)
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +54,7 @@ def run_exiftool(filepath: str, *, timeout: int = 30) -> dict | None:
             capture_output=True,
             text=True,
             timeout=timeout,
+            creationflags=_SUBPROCESS_FLAGS,
         )
         if proc.returncode != 0:
             return None

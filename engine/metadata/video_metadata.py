@@ -6,6 +6,7 @@ import json
 import shutil
 import struct
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -13,6 +14,12 @@ from sortique.engine.metadata.exiftool_common import (
     is_exiftool_available as _is_exiftool_available,
     parse_exiftool_date as _parse_exiftool_date,
     run_exiftool as _run_exiftool,
+)
+
+# On Windows, prevent a visible cmd.exe window from flashing when
+# launching subprocesses from a GUI application.
+_SUBPROCESS_FLAGS: int = (
+    subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 )
 
 
@@ -345,6 +352,7 @@ class VideoMetadataExtractor:
                 capture_output=True,
                 text=True,
                 timeout=30,
+                creationflags=_SUBPROCESS_FLAGS,
             )
             if proc.returncode != 0:
                 return None

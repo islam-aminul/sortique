@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -55,6 +56,12 @@ class DedupEngine:
     def __init__(self, db: Database, hasher: FileHasher) -> None:
         self.db = db
         self.hasher = hasher
+        # In-memory SHA-256 → FileRecord map for the current session.
+        # This is the primary lookup for dedup checks — it works in both
+        # dry-run mode (where DB writes are skipped) and multi-threaded
+        # mode (where DB writes happen later in the pipeline).
+        self._hash_map: dict[str, FileRecord] = {}
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Tier 1: exact byte matching
@@ -66,6 +73,12 @@ class DedupEngine:
         session_id: str,
     ) -> DedupResult:
         """Check if *file_record*'s SHA-256 hash matches any existing record.
+
+        Uses an **in-memory hash map** as the primary lookup so that
+        dedup works correctly in both dry-run mode (where DB writes are
+        skipped) and multi-threaded mode (where DB writes happen later
+        in the pipeline).  Falls back to the database for resume
+        scenarios where files were processed in a previous run.
 
         When a match is found the **conflict ranking** rules decide who
         is the *winner* (original) and who is the *loser* (duplicate):
@@ -90,10 +103,24 @@ class DedupEngine:
                 bytes_saved=0,
             )
 
-        existing = self.db.get_file_by_hash(session_id, sha)
+        with self._lock:
+            return self._check_duplicate_locked(file_record, session_id, sha)
 
-        # --- no match → not a duplicate ---
+    def _check_duplicate_locked(
+        self,
+        file_record: FileRecord,
+        session_id: str,
+        sha: str,
+    ) -> DedupResult:
+        """Core dedup logic, called while holding ``self._lock``."""
+        # --- lookup: in-memory map first, then DB (for resume) ---
+        existing = self._hash_map.get(sha)
+        if existing is None:
+            existing = self.db.get_file_by_hash(session_id, sha)
+
+        # --- no match → register and return ---
         if existing is None or existing.id == file_record.id:
+            self._hash_map[sha] = file_record
             return DedupResult(
                 is_duplicate=False,
                 original_file_id=None,
@@ -115,9 +142,6 @@ class DedupEngine:
                 group.file_count += 1
                 group.bytes_saved += loser.file_size
                 group.winner_file_id = winner.id
-                # Persist the updated group by recreating (SQLite has no
-                # built-in "upsert" in our thin wrapper, so we update
-                # the fields we care about via a raw query).
                 self._update_duplicate_group(group)
         else:
             # Create a brand-new duplicate group.
@@ -150,6 +174,9 @@ class DedupEngine:
             file_record.is_duplicate = False
             file_record.duplicate_group_id = group_id
             self.db.update_file_record(file_record)
+
+            # Update the in-memory map to point to the new winner.
+            self._hash_map[sha] = file_record
 
             return DedupResult(
                 is_duplicate=False,
@@ -300,13 +327,14 @@ class DedupEngine:
 
     def _update_duplicate_group(self, group: DuplicateGroup) -> None:
         """Persist updated fields of an existing :class:`DuplicateGroup`."""
-        self.db._conn.execute(
-            """UPDATE duplicate_groups
-               SET winner_file_id = ?, file_count = ?, bytes_saved = ?
-               WHERE id = ?""",
-            (group.winner_file_id, group.file_count, group.bytes_saved, group.id),
-        )
-        self.db._conn.commit()
+        with self.db._transaction() as cur:
+            cur.execute(
+                """UPDATE duplicate_groups
+                   SET winner_file_id = ?, file_count = ?, bytes_saved = ?
+                   WHERE id = ?""",
+                (group.winner_file_id, group.file_count, group.bytes_saved,
+                 group.id),
+            )
 
 
 # ---------------------------------------------------------------------------

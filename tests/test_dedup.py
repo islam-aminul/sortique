@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -606,3 +607,164 @@ class TestPerceptualMatch:
         assert m.similarity == 0.97
         assert m.file_a_path == "/src/a.jpg"
         assert m.file_b_path == "/src/b.jpg"
+
+
+# ===========================================================================
+# 8.  In-memory hash map (dry-run + thread-safety)
+# ===========================================================================
+
+class TestInMemoryHashMap:
+    """Verify that dedup uses the in-memory hash map so it works
+    without requiring file records to be pre-populated in the database.
+    This is critical for dry-run mode and multi-threaded processing.
+    """
+
+    def test_dedup_without_db_records(self, engine, db):
+        """Duplicate is detected purely via in-memory map (no DB pre-population)."""
+        original = _record(rid="file-orig", source_path="/src/a.jpg", sha256="same-hash")
+        result1 = engine.check_duplicate(original, "sess-1")
+        assert result1.is_duplicate is False
+
+        dupe = _record(rid="file-dupe", source_path="/src/backup/a.jpg", sha256="same-hash")
+        result2 = engine.check_duplicate(dupe, "sess-1")
+        assert result2.is_duplicate is True
+        assert result2.bytes_saved == 1000
+
+    def test_first_file_registered_in_map(self, engine, db):
+        """First file with a hash is stored in the in-memory map."""
+        rec = _record(rid="file-first", sha256="unique-hash")
+        engine.check_duplicate(rec, "sess-1")
+
+        assert "unique-hash" in engine._hash_map
+        assert engine._hash_map["unique-hash"].id == "file-first"
+
+    def test_different_hashes_not_duplicates(self, engine, db):
+        """Files with different hashes don't interfere in the map."""
+        a = _record(rid="file-a", source_path="/src/a.jpg", sha256="hash-a")
+        b = _record(rid="file-b", source_path="/src/b.jpg", sha256="hash-b")
+
+        result_a = engine.check_duplicate(a, "sess-1")
+        result_b = engine.check_duplicate(b, "sess-1")
+
+        assert result_a.is_duplicate is False
+        assert result_b.is_duplicate is False
+        assert len(engine._hash_map) == 2
+
+    def test_three_files_same_hash(self, engine, db):
+        """Third file with same hash is also detected as duplicate."""
+        f1 = _record(rid="file-1", source_path="/src/a.jpg", sha256="same")
+        f2 = _record(rid="file-2", source_path="/src/backup1/a.jpg", sha256="same")
+        f3 = _record(rid="file-3", source_path="/src/backup2/a.jpg", sha256="same")
+
+        r1 = engine.check_duplicate(f1, "sess-1")
+        r2 = engine.check_duplicate(f2, "sess-1")
+        r3 = engine.check_duplicate(f3, "sess-1")
+
+        assert r1.is_duplicate is False
+        assert r2.is_duplicate is True
+        assert r3.is_duplicate is True
+
+    def test_winner_swap_updates_map(self, engine, db):
+        """When a new file wins over the existing one, the map is updated."""
+        # File with a long path is registered first.
+        existing = _record(
+            rid="file-long",
+            source_path="/src/very/deep/nested/photo.jpg",
+            sha256="swap-hash",
+        )
+        engine.check_duplicate(existing, "sess-1")
+        assert engine._hash_map["swap-hash"].id == "file-long"
+
+        # File with a shorter path comes in and wins.
+        new_file = _record(
+            rid="file-short",
+            source_path="/src/photo.jpg",
+            sha256="swap-hash",
+        )
+        result = engine.check_duplicate(new_file, "sess-1")
+
+        assert result.is_duplicate is False  # winner
+        assert engine._hash_map["swap-hash"].id == "file-short"
+
+    def test_db_fallback_for_resume(self, engine, db):
+        """Files from a previous run (in DB) are found even without map entry."""
+        # Simulate a previously-processed file already in the DB.
+        previous = _record(
+            rid="file-prev", source_path="/src/old.jpg", sha256="resume-hash",
+        )
+        db.create_file_record(previous)
+
+        # Engine's map is empty — should fall back to DB.
+        assert "resume-hash" not in engine._hash_map
+
+        new = _record(rid="file-new", source_path="/src/backup/old.jpg", sha256="resume-hash")
+        result = engine.check_duplicate(new, "sess-1")
+
+        assert result.is_duplicate is True
+
+
+class TestThreadSafety:
+    """Verify dedup is thread-safe with concurrent access."""
+
+    def test_concurrent_duplicate_detection(self, db, hasher):
+        """Multiple threads processing files with the same hash —
+        exactly one should be marked as non-duplicate, the rest as duplicates.
+        """
+        engine = DedupEngine(db, hasher)
+        num_files = 20
+        results: list[DedupResult] = [None] * num_files  # type: ignore[list-item]
+        records = [
+            _record(
+                rid=f"file-{i}",
+                source_path=f"/src/dir{i}/photo.jpg",
+                sha256="concurrent-hash",
+            )
+            for i in range(num_files)
+        ]
+
+        def worker(idx: int) -> None:
+            results[idx] = engine.check_duplicate(records[idx], "sess-1")
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_files)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Exactly one file should be the non-duplicate winner (from the
+        # very first registration).  All others should be duplicates.
+        non_dupes = [r for r in results if not r.is_duplicate]
+        dupes = [r for r in results if r.is_duplicate]
+
+        # With winner-swap logic, there can be at most 2 non-dupes
+        # (the initial winner + a later swap winner), but total dupes
+        # must be >= num_files - 2.
+        assert len(dupes) >= num_files - 2
+        # At minimum 1 non-duplicate (the winner).
+        assert len(non_dupes) >= 1
+
+    def test_concurrent_different_hashes(self, db, hasher):
+        """Threads with different hashes should all be non-duplicates."""
+        engine = DedupEngine(db, hasher)
+        num_files = 10
+        results: list[DedupResult] = [None] * num_files  # type: ignore[list-item]
+        records = [
+            _record(
+                rid=f"file-{i}",
+                source_path=f"/src/photo{i}.jpg",
+                sha256=f"unique-hash-{i}",
+            )
+            for i in range(num_files)
+        ]
+
+        def worker(idx: int) -> None:
+            results[idx] = engine.check_duplicate(records[idx], "sess-1")
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_files)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert all(not r.is_duplicate for r in results)
+        assert len(engine._hash_map) == num_files

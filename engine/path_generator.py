@@ -202,7 +202,7 @@ class PathGenerator:
         return FileSystemHelper.sanitize_filename(raw_filename, target_os="windows")
 
     def resolve_conflict(self, dest_path: str) -> str:
-        """Append ``_1``, ``_2``, … before the extension until the path is free.
+        """Append ``-1``, ``-2``, … before the extension until the path is free.
 
         Raises :class:`FileExistsError` after ``MAX_CONFLICT_ATTEMPTS``.
         """
@@ -212,7 +212,7 @@ class PathGenerator:
         base, ext = os.path.splitext(dest_path)
 
         for i in range(1, MAX_CONFLICT_ATTEMPTS + 1):
-            candidate = f"{base}_{i}{ext}"
+            candidate = f"{base}-{i}{ext}"
             if not os.path.exists(candidate):
                 return candidate
 

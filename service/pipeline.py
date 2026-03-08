@@ -437,7 +437,7 @@ class Pipeline:
         if record.destination_path is None:
             return False, "no destination path"
 
-        # Resolve conflicts (appends _1, _2, … if needed).
+        # Resolve conflicts (appends -1, -2, … if needed).
         record.destination_path = self._path_gen.resolve_conflict(
             record.destination_path,
         )
