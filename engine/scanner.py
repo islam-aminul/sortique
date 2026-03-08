@@ -50,6 +50,11 @@ class ScanResult:
 
 _TEMP_SUFFIXES = frozenset({".tmp", ".temp"})
 
+# Android / app thumbnail cache files — e.g. "43472faf4de4b1fff3e461ec160337c0.thumb1".
+# These contain embedded JPEG data (magic-byte detection classifies them as images)
+# but they are cache artefacts, not user content.
+_CACHE_EXT_PREFIX: str = ".thumb"
+
 
 class Scanner:
     """Recursive directory scanner with exclusion rules and incremental support."""
@@ -208,7 +213,8 @@ class Scanner:
                     continue
 
                 _, ext = os.path.splitext(name)
-                if ext.lower() in _TEMP_SUFFIXES:
+                ext_lower = ext.lower()
+                if ext_lower in _TEMP_SUFFIXES or ext_lower.startswith(_CACHE_EXT_PREFIX):
                     result.skipped_system += 1
                     continue
 

@@ -81,6 +81,12 @@ def scan_tree(tmp_path: Path) -> Path:
     # Cloud stub
     _touch(root / "stub.icloud", b"stub")
 
+    # Android thumbnail cache files (contain JPEG data but are cache artefacts)
+    _touch(root / "photos" / "43472faf4de4b1fff3e461ec160337c0.thumb1", b"\xff\xd8\xffthumb")
+    _touch(root / "photos" / "cc3c44f57e626e30c879a5805f8899d6.thumb0", b"\xff\xd8\xffthumb")
+    _touch(root / "photos" / "cbff4b798cf25336ba53904a962e182d.thumb", b"\xff\xd8\xffthumb")
+    _touch(root / "photos" / "cc3c44f57e626e30c879a5805f8899d6.thumb2", b"\xff\xd8\xffthumb")
+
     return root
 
 
@@ -202,8 +208,62 @@ class TestSystemFileSkipping:
     def test_skipped_system_count(self, config: ConfigManager, scan_tree: Path) -> None:
         scanner = Scanner(config)
         result = scanner.scan([str(scan_tree)])
-        # Thumbs.db, desktop.ini, temp_stuff.tmp, cache.temp = 4
-        assert result.skipped_system >= 4
+        # Thumbs.db, desktop.ini, temp_stuff.tmp, cache.temp, + 4 .thumb* = 8
+        assert result.skipped_system >= 8
+
+
+# ======================================================================
+# Cache file skipping (.thumb*)
+# ======================================================================
+
+class TestCacheFileSkipping:
+    def test_thumb_files_skipped(self, config: ConfigManager, scan_tree: Path) -> None:
+        scanner = Scanner(config)
+        result = scanner.scan([str(scan_tree)])
+        names = {os.path.basename(f.path) for f in result.files}
+        assert "43472faf4de4b1fff3e461ec160337c0.thumb1" not in names
+        assert "cc3c44f57e626e30c879a5805f8899d6.thumb0" not in names
+        assert "cbff4b798cf25336ba53904a962e182d.thumb" not in names
+        assert "cc3c44f57e626e30c879a5805f8899d6.thumb2" not in names
+
+    def test_thumb_counted_as_system_skip(self, config: ConfigManager, tmp_path: Path) -> None:
+        """Each .thumb* file increments skipped_system."""
+        root = tmp_path / "thumb_only"
+        _touch(root / "abc123.thumb1", b"\xff\xd8\xffcache")
+        _touch(root / "def456.thumb0", b"\xff\xd8\xffcache")
+        _touch(root / "photo.jpg", b"\xff\xd8\xffreal")
+
+        scanner = Scanner(config)
+        result = scanner.scan([str(root)])
+
+        assert len(result.files) == 1
+        assert os.path.basename(result.files[0].path) == "photo.jpg"
+        assert result.skipped_system == 2
+
+    def test_thumb_case_insensitive(self, config: ConfigManager, tmp_path: Path) -> None:
+        """Extension check is case-insensitive."""
+        root = tmp_path / "thumb_case"
+        _touch(root / "ABC.THUMB1", b"\xff\xd8\xffcache")
+        _touch(root / "DEF.Thumb", b"\xff\xd8\xffcache")
+
+        scanner = Scanner(config)
+        result = scanner.scan([str(root)])
+
+        assert result.files == []
+        assert result.skipped_system == 2
+
+    def test_thumb_with_higher_numbers(self, config: ConfigManager, tmp_path: Path) -> None:
+        """Handles .thumb3, .thumb4, etc. via startswith matching."""
+        root = tmp_path / "thumb_nums"
+        _touch(root / "cache.thumb3", b"data")
+        _touch(root / "cache.thumb10", b"data")
+        _touch(root / "cache.thumbx", b"data")  # unusual but still .thumb*
+
+        scanner = Scanner(config)
+        result = scanner.scan([str(root)])
+
+        assert result.files == []
+        assert result.skipped_system == 3
 
 
 # ======================================================================
