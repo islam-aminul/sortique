@@ -14,8 +14,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Service Layer (service/)                   │
 │                                                                 │
-│  Pipeline ──► FileProcessorPool ──► [worker threads]           │
-│  SessionManager   DryRunManager   UndoManager                  │
+│  Pipeline ──► FileProcessorPool ──► [worker threads]            │
+│  SessionManager   DryRunManager   UndoManager                   │
 │  SpaceChecker     CollectionReviewer   NotificationService      │
 │        │                                                        │
 └────────┼──────────────────────────────────────────────────────  ┘
