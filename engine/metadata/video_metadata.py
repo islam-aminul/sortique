@@ -38,6 +38,28 @@ class VideoMetadata:
     width: int | None = None
     height: int | None = None
     duration_unknown: bool = False
+    # True when GPS coordinates were found — strong signal for a camera recording.
+    has_location: bool = False
+    # Encoding software tag (e.g. "Lavf58.76.100", "HandBrake 1.6.1").
+    encoder: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Encoding-software keyword filter
+# ---------------------------------------------------------------------------
+
+_ENCODER_KEYWORDS: frozenset[str] = frozenset({
+    "lavf", "lavc", "ffmpeg", "handbrake", "x264", "x265",
+    "libx264", "libx265", "mencoder", "nero", "divx", "xvid", "libxvid",
+})
+
+
+def _looks_like_encoder(value: str | None) -> bool:
+    """Return True if *value* looks like an encoding library, not a camera brand."""
+    if not value:
+        return False
+    lower = value.lower()
+    return any(kw in lower for kw in _ENCODER_KEYWORDS)
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +406,7 @@ class VideoMetadataExtractor:
 
         width: int | None = None
         height: int | None = None
+        video_stream_tags: dict = {}
         for s in streams:
             if s.get("codec_type") == "video":
                 try:
@@ -391,22 +414,74 @@ class VideoMetadataExtractor:
                     height = int(s["height"])
                 except (KeyError, ValueError, TypeError):
                     pass
+                video_stream_tags = s.get("tags", {})
                 break
 
-        tags = fmt.get("tags", {})
-        make = tags.get("make") or tags.get("com.apple.quicktime.make")
-        model = tags.get("model") or tags.get("com.apple.quicktime.model")
+        # --- make / model ---
+        # Priority: format-level Apple tags → format-level generic → Android
+        # manufacturer → stream-level tags (some cameras embed at stream level).
+        fmt_tags = fmt.get("tags", {})
+        make = (
+            fmt_tags.get("make")
+            or fmt_tags.get("com.apple.quicktime.make")
+            or fmt_tags.get("com.android.manufacturer")
+        )
+        model = (
+            fmt_tags.get("model")
+            or fmt_tags.get("com.apple.quicktime.model")
+            or fmt_tags.get("com.android.model")
+        )
+        # Fall back to stream-level tags (GoPro and some cameras use these).
+        if not make:
+            make = (
+                video_stream_tags.get("make")
+                or video_stream_tags.get("com.apple.quicktime.make")
+                or video_stream_tags.get("com.android.manufacturer")
+            )
+        if not model:
+            model = (
+                video_stream_tags.get("model")
+                or video_stream_tags.get("com.apple.quicktime.model")
+                or video_stream_tags.get("com.android.model")
+            )
 
+        # Filter out encoding-library names that sometimes appear in make/model.
+        if _looks_like_encoder(make) or _looks_like_encoder(model):
+            make = None
+            model = None
+
+        # --- GPS / location ---
+        # iPhone: com.apple.quicktime.location.ISO6709 or location tag.
+        # Android: location tag in ISO 6709 format (e.g. "+37.3861-122.0839/").
+        has_location = bool(
+            fmt_tags.get("location")
+            or fmt_tags.get("com.apple.quicktime.location.ISO6709")
+            or fmt_tags.get("com.apple.quicktime.location")
+        )
+
+        # --- encoder ---
+        encoder = fmt_tags.get("encoder") or video_stream_tags.get("encoder")
+        if isinstance(encoder, str):
+            encoder = encoder.strip() or None
+
+        # --- date ---
         date: datetime | None = None
         date_str = (
-            tags.get("creation_time")
-            or tags.get("date")
-            or tags.get("com.apple.quicktime.creationdate")
+            fmt_tags.get("creation_time")
+            or fmt_tags.get("date")
+            or fmt_tags.get("com.apple.quicktime.creationdate")
         )
         if date_str:
-            for date_fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            for date_fmt in (
+                "%Y-%m-%dT%H:%M:%S.%fZ",
+                "%Y-%m-%dT%H:%M:%SZ",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d",
+            ):
                 try:
-                    date = datetime.strptime(date_str, date_fmt).replace(tzinfo=timezone.utc)
+                    date = datetime.strptime(date_str, date_fmt).replace(
+                        tzinfo=timezone.utc,
+                    )
                     break
                 except ValueError:
                     continue
@@ -419,6 +494,8 @@ class VideoMetadataExtractor:
             width=width,
             height=height,
             duration_unknown=(duration is None),
+            has_location=has_location,
+            encoder=encoder,
         )
 
     # ------------------------------------------------------------------
@@ -474,6 +551,22 @@ class VideoMetadataExtractor:
         else:
             model = None
 
+        # Filter out encoding-library names that sometimes appear in make/model.
+        if _looks_like_encoder(make) or _looks_like_encoder(model):
+            make = None
+            model = None
+
+        # GPS — ExifTool emits numeric degrees when run with -n.
+        has_location = (
+            d.get("GPSLatitude") is not None
+            or d.get("GPSLongitude") is not None
+        )
+
+        # Encoder / Software tag.
+        encoder_raw = d.get("Software") or d.get("Encoder")
+        encoder = encoder_raw.strip() if isinstance(encoder_raw, str) else None
+        encoder = encoder or None
+
         # Creation date: ExifTool uses several tag names for video dates.
         date: datetime | None = None
         for key in ("DateTimeOriginal", "CreateDate",
@@ -490,6 +583,8 @@ class VideoMetadataExtractor:
             width=width,
             height=height,
             duration_unknown=(duration is None),
+            has_location=has_location,
+            encoder=encoder,
         )
 
 

@@ -391,14 +391,14 @@ class TestGenerate:
         )
         assert path == expected
 
-    def test_originals_unknown_with_year(self, gen, dest):
+    def test_clips_with_year(self, gen, dest):
         dr = _dr(datetime(2024, 7, 4, 0, 0, 0))
         path = gen.generate(
-            "Originals/Unknown", "clip", ".mp4", dr, None,
+            "Clips", "clip", ".mp4", dr, None,
             file_type=FileType.VIDEO,
         )
         expected = J(
-            dest, "Videos", "Originals", "Unknown", "2024",
+            dest, "Videos", "Clips", "2024",
             "2024-07-04 00-00-00 -- clip.mp4",
         )
         assert path == expected
@@ -431,16 +431,16 @@ class TestGenerate:
         expected = J(dest, "Audio", "Songs", "track01.mp3")
         assert path == expected
 
-    def test_video_originals(self, gen, dest):
+    def test_video_camera(self, gen, dest):
         dr = _dr(datetime(2024, 5, 1, 12, 0, 0))
         exif = _exif(make="Apple", model="iPhone 15")
         path = gen.generate(
-            "Originals", "VID_001", ".mp4", dr, exif,
+            "Camera", "VID_001", ".mp4", dr, exif,
             file_type=FileType.VIDEO,
         )
         expected = J(
-            dest, "Videos", "Originals", "Apple - iPhone 15", "2024",
-            "VID_001.mp4",
+            dest, "Videos", "Camera", "Apple - iPhone 15", "2024",
+            "2024-05-01 12-00-00 -- Apple - iPhone 15 -- VID_001.mp4",
         )
         assert path == expected
 
