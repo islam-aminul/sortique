@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING
@@ -137,11 +138,9 @@ class Pipeline:
         manifest = HashManifest(self._path_gen.destination_root)
         self._dedup.load_manifest(manifest)
 
-        # Per-file transient state (reset each file)
-        self._exif_result = None
-        self._date_result = None
-        self._video_meta = None
-        self._audio_meta = None
+        # Per-file transient state — stored in thread-local storage so that
+        # concurrent workers each get their own isolated copy.
+        self._local = threading.local()
 
     # ------------------------------------------------------------------
     # Public API
@@ -157,11 +156,11 @@ class Pipeline:
         result = PipelineResult(file_id=record.id)
         start_stage = record.pipeline_stage
 
-        # Reset per-file transient state.
-        self._exif_result = None
-        self._date_result = None
-        self._video_meta = None
-        self._audio_meta = None
+        # Reset per-file transient state (thread-local).
+        self._local.exif_result = None
+        self._local.date_result = None
+        self._local.video_meta = None
+        self._local.audio_meta = None
 
         for stage_num, method_name in self.STAGES:
             # Resume support: skip already-completed stages.
@@ -318,26 +317,26 @@ class Pipeline:
     ) -> tuple[bool, str | None]:
         """Extract metadata based on file type."""
         if record.file_type == FileType.IMAGE:
-            self._exif_result = self._exif_extractor.extract(
+            self._local.exif_result = self._exif_extractor.extract(
                 record.source_path,
             )
-            record.exif_status = self._exif_result.status
+            record.exif_status = self._local.exif_result.status
             record.exif_data = {
-                "make": self._exif_result.make,
-                "model": self._exif_result.model,
-                "software": self._exif_result.software,
-                "orientation": self._exif_result.orientation,
-                "width": self._exif_result.width,
-                "height": self._exif_result.height,
+                "make": self._local.exif_result.make,
+                "model": self._local.exif_result.model,
+                "software": self._local.exif_result.software,
+                "orientation": self._local.exif_result.orientation,
+                "width": self._local.exif_result.width,
+                "height": self._local.exif_result.height,
             }
 
         elif record.file_type == FileType.VIDEO:
-            self._video_meta = self._video_extractor.extract(
+            self._local.video_meta = self._video_extractor.extract(
                 record.source_path,
             )
 
         elif record.file_type == FileType.AUDIO:
-            self._audio_meta = self._audio_extractor.extract(
+            self._local.audio_meta = self._audio_extractor.extract(
                 record.source_path,
             )
 
@@ -352,28 +351,28 @@ class Pipeline:
         self, record: FileRecord,
     ) -> tuple[bool, str | None]:
         """Extract the best date from metadata + filename fallback."""
-        exif_for_date = self._exif_result
+        exif_for_date = self._local.exif_result
 
         # For videos, build a lightweight ExifResult-like stand-in so
         # the date parser can use the video's creation date.
-        if record.file_type == FileType.VIDEO and self._video_meta is not None:
+        if record.file_type == FileType.VIDEO and self._local.video_meta is not None:
             from sortique.engine.metadata.exif_extractor import ExifResult
 
             exif_for_date = ExifResult(
-                date_original=self._video_meta.date,
-                make=self._video_meta.make,
-                model=self._video_meta.model,
+                date_original=self._local.video_meta.date,
+                make=self._local.video_meta.make,
+                model=self._local.video_meta.model,
             )
 
-        self._date_result = self._date_parser.extract_date(
+        self._local.date_result = self._date_parser.extract_date(
             record.source_path, exif_result=exif_for_date,
         )
 
-        if self._date_result.date is not None:
-            record.date_value = self._date_result.date
-            record.date_source = self._date_result.source
-            if self._date_result.timezone_offset:
-                record.timezone_offset = self._date_result.timezone_offset
+        if self._local.date_result.date is not None:
+            record.date_value = self._local.date_result.date
+            record.date_source = self._local.date_result.source
+            if self._local.date_result.timezone_offset:
+                record.timezone_offset = self._local.date_result.timezone_offset
 
         return True, None
 
@@ -392,21 +391,21 @@ class Pipeline:
         if record.file_type == FileType.IMAGE:
             from sortique.engine.metadata.exif_extractor import ExifResult
 
-            exif = self._exif_result or ExifResult()
+            exif = self._local.exif_result or ExifResult()
             record.category = self._categorizer.categorize_image(
                 record.source_path, exif, ext_lower,
             )
         elif record.file_type == FileType.VIDEO:
             from sortique.engine.metadata.video_metadata import VideoMetadata
 
-            vmeta = self._video_meta or VideoMetadata(duration_unknown=True)
+            vmeta = self._local.video_meta or VideoMetadata(duration_unknown=True)
             record.category = self._categorizer.categorize_video(
                 record.source_path, vmeta,
             )
         elif record.file_type == FileType.AUDIO:
             from sortique.engine.metadata.audio_metadata import AudioMetadata
 
-            ameta = self._audio_meta or AudioMetadata()
+            ameta = self._local.audio_meta or AudioMetadata()
             record.category = self._categorizer.categorize_audio(
                 record.source_path, ameta,
             )
@@ -423,8 +422,8 @@ class Pipeline:
             category=record.category,
             original_filename=stem,
             original_ext=ext,
-            date_result=self._date_result,
-            exif=self._exif_result,
+            date_result=self._local.date_result,
+            exif=self._local.exif_result,
             file_type=record.file_type,
         )
         record.destination_path = dest
@@ -496,8 +495,8 @@ class Pipeline:
             category=record.category,
             original_filename=stem,
             original_ext=ext,
-            date_result=self._date_result,
-            exif=self._exif_result,
+            date_result=self._local.date_result,
+            exif=self._local.exif_result,
             file_type=record.file_type,
             is_export=True,
         )
@@ -505,7 +504,7 @@ class Pipeline:
 
         try:
             self._image_processor.generate_export(
-                record.source_path, export_dest, self._exif_result,
+                record.source_path, export_dest, self._local.exif_result,
             )
         except Exception as exc:
             logger.warning(
