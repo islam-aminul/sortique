@@ -139,10 +139,21 @@ class PathGenerator:
             cat_path = os.path.join(media_folder, cat_path)
 
         # --- filename ---
-        filename = self.generate_filename(
-            original_filename, original_ext,
-            date_result, exif, is_burst, burst_index,
-        )
+        if category == "Originals" and not is_export:
+            # Preserve the original camera filename exactly — no date or
+            # make/model prefix.  Exports generated from Originals still
+            # use the full template (is_export=True takes the other branch).
+            ext = original_ext or ""
+            if ext and not ext.startswith("."):
+                ext = "." + ext
+            filename = FileSystemHelper.sanitize_filename(
+                f"{original_filename}{ext}", target_os="windows"
+            )
+        else:
+            filename = self.generate_filename(
+                original_filename, original_ext,
+                date_result, exif, is_burst, burst_index,
+            )
 
         return os.path.join(self.destination_root, cat_path, filename)
 

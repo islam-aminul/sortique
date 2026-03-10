@@ -280,7 +280,7 @@ class TestGenerate:
         )
         expected = J(
             dest, "Images", "Originals", "Canon - EOS R5", "2024",
-            "2024-03-15 14-30-00 -- Canon - EOS R5 -- IMG_001.jpg",
+            "IMG_001.jpg",
         )
         assert path == expected
 
@@ -366,7 +366,7 @@ class TestGenerate:
         )
         expected = J(
             dest, "Images", "Originals", "Samsung - SM-G998B", "2024",
-            "2024-03-15 14-30-00-003 -- Samsung - SM-G998B -- IMG_001.jpg",
+            "IMG_001.jpg",
         )
         assert path == expected
 
@@ -440,7 +440,7 @@ class TestGenerate:
         )
         expected = J(
             dest, "Videos", "Originals", "Apple - iPhone 15", "2024",
-            "2024-05-01 12-00-00 -- Apple - iPhone 15 -- VID_001.mp4",
+            "VID_001.mp4",
         )
         assert path == expected
 
@@ -460,7 +460,7 @@ class TestGenerate:
         )
         expected = J(
             dest, "Images", "Originals", "Canon - EOS R5", "0000",
-            "Canon - EOS R5 -- IMG_001.jpg",
+            "IMG_001.jpg",
         )
         assert path == expected
 
