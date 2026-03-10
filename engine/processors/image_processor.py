@@ -244,7 +244,13 @@ class ImageProcessor:
             save_kwargs["exif"] = exif_bytes
 
         os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        img.save(export_path, **save_kwargs)
+        try:
+            img.save(export_path, **save_kwargs)
+        except OSError:
+            # libjpeg-turbo on some platforms (e.g. Apple Silicon) does not
+            # support optimize=True (two-pass Huffman); retry without it.
+            save_kwargs.pop("optimize", None)
+            img.save(export_path, **save_kwargs)
 
         return ExportResult(
             success=True,
