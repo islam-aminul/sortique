@@ -128,6 +128,11 @@ class ConfigManager:
                 raise ValueError(
                     f"max_resolution must be [width, height] with positive integers, got {value!r}"
                 )
+        elif key == "editor_exclusions":
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise ValueError(
+                    f"editor_exclusions must be a list of strings, got {value!r}"
+                )
 
     # ------------------------------------------------------------------
     # Convenience properties

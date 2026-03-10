@@ -147,7 +147,7 @@ class ImageProcessor:
             if self._has_real_transparency(img):
                 # Save as PNG, preserving transparency.
                 export_path = _swap_extension(export_path, ".png")
-                img.save(export_path, format="PNG")
+                img.save(export_path, format="PNG", optimize=True)
                 return ExportResult(
                     success=True,
                     export_path=export_path,
@@ -168,7 +168,7 @@ class ImageProcessor:
                 img = img.convert("RGBA")
                 if self._has_real_transparency(img):
                     export_path = _swap_extension(export_path, ".png")
-                    img.save(export_path, format="PNG")
+                    img.save(export_path, format="PNG", optimize=True)
                     return ExportResult(
                         success=True,
                         export_path=export_path,
@@ -188,7 +188,7 @@ class ImageProcessor:
             img = img.convert("RGBA")
             if self._has_real_transparency(img):
                 export_path = _swap_extension(export_path, ".png")
-                img.save(export_path, format="PNG")
+                img.save(export_path, format="PNG", optimize=True)
                 return ExportResult(
                     success=True,
                     export_path=export_path,
@@ -237,6 +237,8 @@ class ImageProcessor:
         save_kwargs: dict = {
             "format": "JPEG",
             "quality": quality,
+            "optimize": True,    # compute optimal Huffman table → smaller files
+            "subsampling": 0,    # 4:4:4 chroma → full colour resolution, no blurring
         }
         if exif_bytes:
             save_kwargs["exif"] = exif_bytes

@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QListWidget,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -46,6 +48,7 @@ _UI_KEYS: tuple[str, ...] = (
     "verify_copies",
     "follow_symlinks",
     "musicbrainz_enabled",
+    "editor_exclusions",
 )
 
 
@@ -94,6 +97,7 @@ class SettingsView(QWidget):
         body_layout.addWidget(self._build_processing_group())
         body_layout.addWidget(self._build_safety_group())
         body_layout.addWidget(self._build_optional_group())
+        body_layout.addWidget(self._build_categorisation_group())
         body_layout.addWidget(self._build_advanced_group())
         body_layout.addStretch()
 
@@ -170,6 +174,63 @@ class SettingsView(QWidget):
         self._musicbrainz.toggled.connect(self._on_widget_changed)
 
         return group
+
+    def _build_categorisation_group(self) -> QGroupBox:
+        group = QGroupBox("Categorisation")
+        layout = QVBoxLayout(group)
+        layout.setSpacing(6)
+
+        label = QLabel(
+            "Editor software exceptions — photos tagged with these programs are\n"
+            "treated as Originals instead of Edited and receive a JPEG export."
+        )
+        label.setStyleSheet("color: #aaa; font-size: 11px;")
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        self._exclusions_list = QListWidget()
+        self._exclusions_list.setFixedHeight(90)
+        self._exclusions_list.setAlternatingRowColors(True)
+        layout.addWidget(self._exclusions_list)
+
+        input_row = QHBoxLayout()
+        input_row.setSpacing(6)
+        self._exclusion_input = QLineEdit()
+        self._exclusion_input.setPlaceholderText("Software name (e.g. Picasa)")
+        self._exclusion_input.returnPressed.connect(self._add_exclusion)
+        input_row.addWidget(self._exclusion_input)
+
+        btn_add = QPushButton("Add")
+        btn_add.setFixedWidth(60)
+        btn_add.clicked.connect(self._add_exclusion)
+        input_row.addWidget(btn_add)
+
+        btn_remove = QPushButton("Remove")
+        btn_remove.setFixedWidth(70)
+        btn_remove.clicked.connect(self._remove_exclusion)
+        input_row.addWidget(btn_remove)
+
+        layout.addLayout(input_row)
+        return group
+
+    def _add_exclusion(self) -> None:
+        text = self._exclusion_input.text().strip()
+        if not text:
+            return
+        # Prevent duplicates (case-insensitive check).
+        existing = [
+            self._exclusions_list.item(i).text().lower()
+            for i in range(self._exclusions_list.count())
+        ]
+        if text.lower() not in existing:
+            self._exclusions_list.addItem(text)
+            self._on_widget_changed()
+        self._exclusion_input.clear()
+
+    def _remove_exclusion(self) -> None:
+        for item in self._exclusions_list.selectedItems():
+            self._exclusions_list.takeItem(self._exclusions_list.row(item))
+        self._on_widget_changed()
 
     def _build_advanced_group(self) -> QGroupBox:
         group = QGroupBox("Advanced")
@@ -260,6 +321,12 @@ class SettingsView(QWidget):
         for w in widgets:
             w.blockSignals(False)
 
+        self._exclusions_list.blockSignals(True)
+        self._exclusions_list.clear()
+        for name in (cfg.get("editor_exclusions") or []):
+            self._exclusions_list.addItem(name)
+        self._exclusions_list.blockSignals(False)
+
     def _read_widgets(self) -> dict:
         """Collect current widget values into a dict."""
         return {
@@ -269,6 +336,10 @@ class SettingsView(QWidget):
             "verify_copies":       self._verify_copies.isChecked(),
             "follow_symlinks":     self._follow_symlinks.isChecked(),
             "musicbrainz_enabled": self._musicbrainz.isChecked(),
+            "editor_exclusions":   [
+                self._exclusions_list.item(i).text()
+                for i in range(self._exclusions_list.count())
+            ],
         }
 
     # ------------------------------------------------------------------

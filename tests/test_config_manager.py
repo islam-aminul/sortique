@@ -29,7 +29,7 @@ def tmp_config_dir(tmp_path: Path) -> Path:
 class TestDefaultLoading:
     def test_loads_builtin_defaults(self, tmp_config_dir: Path) -> None:
         cm = ConfigManager(config_dir=str(tmp_config_dir))
-        assert cm.jpeg_quality == 90
+        assert cm.jpeg_quality == 85
         assert cm.threads == 4
         assert cm.verify_copies is False
         assert cm.follow_symlinks is False
@@ -163,7 +163,7 @@ class TestPersistence:
     def test_save_strips_default_values(self, tmp_config_dir: Path) -> None:
         cm = ConfigManager(config_dir=str(tmp_config_dir))
         # Save a value that matches the default — should NOT appear in file.
-        cm.save_user_config({"jpeg_quality": 90})
+        cm.save_user_config({"jpeg_quality": 85})
 
         raw = json.loads((tmp_config_dir / "config.json").read_text())
         assert "jpeg_quality" not in raw
@@ -182,7 +182,7 @@ class TestPersistence:
         assert not new_dir.exists()
         cm = ConfigManager(config_dir=str(new_dir))
         assert new_dir.exists()
-        assert cm.jpeg_quality == 90
+        assert cm.jpeg_quality == 85
 
 
 # ------------------------------------------------------------------
@@ -247,7 +247,7 @@ class TestSnapshot:
 
         # Mutating the snapshot must not affect the manager.
         snap["jpeg_quality"] = 999
-        assert cm.jpeg_quality == 90
+        assert cm.jpeg_quality == 85
 
     def test_snapshot_reflects_overrides(self, tmp_config_dir: Path) -> None:
         cm = ConfigManager(config_dir=str(tmp_config_dir))

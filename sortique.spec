@@ -11,6 +11,7 @@
 # to pathex so that "import sortique" resolves correctly during analysis.
 
 import sys
+import platform
 from pathlib import Path
 
 block_cipher = None
@@ -23,6 +24,11 @@ parent_dir = str(repo_root.parent)  # /…/  (where the `sortique` package lives
 # ---------------------------------------------------------------------------
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"
+
+_os_name = "Windows" if IS_WINDOWS else ("macOS" if IS_MACOS else "Linux")
+_arch    = platform.machine()          # arm64 | x86_64 | AMD64
+EXE_NAME = f"sortique-{_os_name}-{_arch}"
+APP_NAME = f"Sortique-{_os_name}-{_arch}.app"
 
 icon_file = None
 if IS_WINDOWS:
@@ -105,7 +111,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="sortique",
+    name=EXE_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -126,7 +132,7 @@ exe = EXE(
 if IS_MACOS:
     app = BUNDLE(
         exe,
-        name="Sortique.app",
+        name=APP_NAME,
         icon=icon_file,
         bundle_identifier="com.sortique.app",
         info_plist={

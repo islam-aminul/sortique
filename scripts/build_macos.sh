@@ -8,6 +8,15 @@
 # =========================================================================
 set -euo pipefail
 
+# Always run from the repo root (parent of this script's directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$REPO_ROOT"
+
+# Detect platform info for output naming
+ARCH=$(uname -m)   # arm64 | x86_64
+SUFFIX="macOS-${ARCH}"
+
 echo "==================================================="
 echo " Sortique Build Script — macOS"
 echo "==================================================="
@@ -65,35 +74,32 @@ python -m pip install --upgrade pip --quiet || echo "WARNING: pip upgrade failed
 # ------------------------------------------------------------------
 echo "[..] Installing dependencies..."
 
-# Install core requirements
-python -m pip install --quiet -r requirements.txt 2>/dev/null || true
+# Install from requirements.txt (required packages — errors are visible)
+python -m pip install --quiet -r requirements.txt || {
+    echo "ERROR: Failed to install dependencies from requirements.txt"
+    exit 1
+}
+
+# Install PyInstaller (build tool)
+python -m pip install --quiet "pyinstaller>=6.0.0" || {
+    echo "ERROR: Failed to install pyinstaller"
+    exit 1
+}
 
 # macOS may need libmagic via Homebrew for python-magic
 if ! python -c "import magic" 2>/dev/null; then
     if command -v brew &>/dev/null; then
         echo "[..] Installing libmagic via Homebrew..."
-        brew install libmagic 2>/dev/null || true
-        python -m pip install --quiet python-magic>=0.4.27 2>/dev/null || true
+        brew install libmagic --quiet 2>/dev/null || true
+        python -m pip install --quiet "python-magic>=0.4.27" 2>/dev/null || true
     fi
 fi
 
-# Install PyInstaller (build tool)
-python -m pip install --quiet "pyinstaller>=6.0.0"
-
-# Report optional packages
+# Report optional package status
 python -c "import rawpy" 2>/dev/null        || echo "WARNING: rawpy not available — RAW file support disabled"
-python -c "import pillow_heif" 2>/dev/null   || echo "WARNING: pillow-heif not available — HEIC/HEIF support disabled"
-python -c "import magic" 2>/dev/null         || echo "WARNING: python-magic not available — magic-byte detection limited"
+python -c "import pillow_heif" 2>/dev/null  || echo "WARNING: pillow-heif not available — HEIC/HEIF support disabled"
+python -c "import magic" 2>/dev/null        || echo "WARNING: python-magic not available — magic-byte detection limited"
 
-# Verify critical packages
-if ! python -c "import PySide6" 2>/dev/null; then
-    echo "ERROR: PySide6 failed to install — cannot build GUI application."
-    exit 1
-fi
-if ! python -c "import PIL" 2>/dev/null; then
-    echo "ERROR: Pillow failed to install — cannot build application."
-    exit 1
-fi
 echo "[OK] Dependencies installed"
 
 # ------------------------------------------------------------------
@@ -107,16 +113,18 @@ echo "[OK] Tests complete"
 # 7. Clean previous build artifacts
 # ------------------------------------------------------------------
 echo "[..] Cleaning previous build..."
-rm -rf build dist
+rm -rf "$REPO_ROOT/build" "$REPO_ROOT/dist"
 echo "[OK] Clean"
 
 # ------------------------------------------------------------------
 # 8. Build with PyInstaller
 # ------------------------------------------------------------------
 echo "[..] Building .app bundle with PyInstaller..."
-pyinstaller sortique.spec
+pyinstaller sortique.spec \
+    --distpath "$REPO_ROOT/dist" \
+    --workpath "$REPO_ROOT/build"
 
-if [ ! -d "dist/Sortique.app" ] && [ ! -f "dist/sortique" ]; then
+if [ ! -d "$REPO_ROOT/dist/Sortique-${SUFFIX}.app" ] && [ ! -f "$REPO_ROOT/dist/sortique-${SUFFIX}" ]; then
     echo
     echo "==================================================="
     echo " BUILD FAILED"
@@ -128,20 +136,20 @@ fi
 # 9. Report result
 # ------------------------------------------------------------------
 echo
-if [ -d "dist/Sortique.app" ]; then
-    SIZE=$(du -sh "dist/Sortique.app" | cut -f1)
+if [ -d "$REPO_ROOT/dist/Sortique-${SUFFIX}.app" ]; then
+    SIZE=$(du -sh "$REPO_ROOT/dist/Sortique-${SUFFIX}.app" | cut -f1)
     echo "==================================================="
     echo " BUILD SUCCESSFUL"
-    echo " Output: dist/Sortique.app ($SIZE)"
+    echo " Output: dist/Sortique-${SUFFIX}.app ($SIZE)"
     echo ""
     echo " To create a distributable DMG:"
-    echo "   hdiutil create -volname Sortique -srcfolder dist/Sortique.app \\"
-    echo "     -ov -format UDZO dist/Sortique.dmg"
+    echo "   hdiutil create -volname Sortique -srcfolder dist/Sortique-${SUFFIX}.app \\"
+    echo "     -ov -format UDZO dist/Sortique-${SUFFIX}.dmg"
     echo "==================================================="
 else
-    SIZE=$(du -sh "dist/sortique" | cut -f1)
+    SIZE=$(du -sh "$REPO_ROOT/dist/sortique-${SUFFIX}" | cut -f1)
     echo "==================================================="
     echo " BUILD SUCCESSFUL"
-    echo " Output: dist/sortique ($SIZE)"
+    echo " Output: dist/sortique-${SUFFIX} ($SIZE)"
     echo "==================================================="
 fi

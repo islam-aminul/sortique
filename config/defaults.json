@@ -1,5 +1,5 @@
 {
-  "jpeg_quality": 90,
+  "jpeg_quality": 85,
   "max_resolution": [3840, 2160],
   "threads": 4,
   "verify_copies": false,
@@ -38,7 +38,7 @@
     "Afterlight",
     "PicsArt"
   ],
-  "editor_exclusions": [],
+  "editor_exclusions": ["Picasa"],
 
   "social_media_image_patterns": [
     "IMG-*-WA*",
