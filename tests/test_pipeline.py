@@ -91,9 +91,9 @@ def _mock_pipeline(db, session_id, *, dry_run=False):
 
     categorizer = MagicMock()
     categorizer.categorize_image.return_value = "Collection"
-    categorizer.categorize_video.return_value = "Originals/Unknown"
+    categorizer.categorize_video.return_value = "Clips"
     categorizer.categorize_audio.return_value = "Collection"
-    categorizer.categorize_document.return_value = "Documents/Other"
+    categorizer.categorize_document.return_value = "Documents/Others"
 
     path_generator = MagicMock()
     path_generator.generate.return_value = "/tmp/dest/file.jpg"
@@ -360,6 +360,33 @@ class TestSkipPropagation:
         rows = db.get_file_records(session.id, status=FileStatus.SKIPPED)
         assert len(rows) == 1
         assert rows[0].skip_reason == "hidden or system file"
+
+    def test_skip_filename_pattern_skips_file(self, db, session, tmp_path):
+        """Files matching skip_filename_patterns are skipped at PATTERN_SKIP."""
+        sidecar = tmp_path / "photo.jpg.supplemental-metadata.json"
+        sidecar.write_bytes(b"{}")
+
+        record = _make_record(session.id, str(sidecar))
+        db.create_file_record(record)
+
+        pipeline = _mock_pipeline(db, session.id)
+        pipeline._skip_filename_patterns = ["*.supplemental-metadata.json"]
+        result = pipeline.process_file(record)
+
+        assert result.final_status == FileStatus.SKIPPED
+        assert "matched skip pattern" in result.skip_reason
+        assert result.stages_completed == PipelineStage.PATTERN_SKIP
+
+    def test_skip_filename_pattern_passes_non_matching(self, db, session, sample_file):
+        """Files NOT matching skip patterns proceed normally."""
+        record = _make_record(session.id, sample_file)
+        db.create_file_record(record)
+
+        pipeline = _mock_pipeline(db, session.id)
+        pipeline._skip_filename_patterns = ["*.supplemental-metadata.json"]
+        result = pipeline.process_file(record)
+
+        assert result.final_status == FileStatus.COMPLETED
 
 
 # ===================================================================

@@ -43,7 +43,8 @@
   "social_media_image_patterns": [
     "IMG-*-WA*",
     "FB_IMG_*",
-    "received_*"
+    "received_*",
+    "????????-????-????-????-????????????.*"
   ],
   "social_media_video_patterns": [
     "VID-*-WA*",
@@ -65,6 +66,19 @@
   "burst_filename_patterns": [
     "*_BURST*",
     "*_BRACKETED*"
+  ],
+
+  "skip_filename_patterns": [
+    "*.supplemental-metadata.json"
+  ],
+
+  "call_recording_patterns": [
+    "SIM*_*_*",
+    "Call_*",
+    "incoming_*",
+    "outgoing_*",
+    "record_*",
+    "callrecord_*"
   ],
 
   "sidecar_extensions": [

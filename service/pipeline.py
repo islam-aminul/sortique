@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 import os
 import threading
@@ -114,6 +115,7 @@ class Pipeline:
         audio_processor: AudioProcessor,
         document_processor: DocumentProcessor,
         dry_run: bool = False,
+        skip_filename_patterns: list[str] = (),
     ) -> None:
         self._db = db
         self._session_id = session_id
@@ -133,6 +135,9 @@ class Pipeline:
         self._video_processor = video_processor
         self._audio_processor = audio_processor
         self._document_processor = document_processor
+
+        # Filename-based skip patterns (fnmatch globs).
+        self._skip_filename_patterns: list[str] = list(skip_filename_patterns)
 
         # Load portable hash manifest for cross-machine dedup.
         manifest = HashManifest(self._path_gen.destination_root)
@@ -260,9 +265,15 @@ class Pipeline:
     def _stage_pattern_skip(
         self, record: FileRecord,
     ) -> tuple[bool, str | None]:
-        """Skip hidden / system files (dot-prefixed or known system names)."""
+        """Skip hidden / system files and files matching skip_filename_patterns."""
         if FileSystemHelper.is_hidden_or_system(record.source_path):
             return False, "hidden or system file"
+
+        filename = os.path.basename(record.source_path)
+        for pattern in self._skip_filename_patterns:
+            if fnmatch.fnmatch(filename, pattern):
+                return False, f"matched skip pattern: {pattern}"
+
         return True, None
 
     # ------------------------------------------------------------------
@@ -418,12 +429,31 @@ class Pipeline:
 
         # --- destination path ---
         stem = os.path.splitext(os.path.basename(record.source_path))[0]
+
+        # For video files, build a lightweight ExifResult so the path generator
+        # can place "Camera" recordings into per-device make/model sub-folders.
+        path_exif = self._local.exif_result
+        if (
+            record.file_type == FileType.VIDEO
+            and self._local.video_meta is not None
+            and (
+                self._local.video_meta.make is not None
+                or self._local.video_meta.model is not None
+            )
+        ):
+            from sortique.engine.metadata.exif_extractor import ExifResult
+
+            path_exif = ExifResult(
+                make=self._local.video_meta.make,
+                model=self._local.video_meta.model,
+            )
+
         dest = self._path_gen.generate(
             category=record.category,
             original_filename=stem,
             original_ext=ext,
             date_result=self._local.date_result,
-            exif=self._local.exif_result,
+            exif=path_exif,
             file_type=record.file_type,
         )
         record.destination_path = dest

@@ -30,11 +30,13 @@ _MEDIA_TYPE_FOLDER: dict[FileType, str] = {
 # Category groupings used by _build_category_path
 # ---------------------------------------------------------------------------
 
-_MAKE_MODEL_YEAR_CATEGORIES = frozenset({"Originals", "RAW"})
+_MAKE_MODEL_YEAR_CATEGORIES = frozenset({"Originals", "RAW", "Camera"})
 
 _YEAR_ONLY_CATEGORIES = frozenset({
     "Edited", "Export", "Motion Photos",
-    "Voice Notes", "WhatsApp",
+    "Voice Notes", "WhatsApp", "Call Recordings",
+    # Video source-type categories
+    "Mobile", "Camcorder", "Clips",
 })
 
 _STATIC_CATEGORIES = frozenset({

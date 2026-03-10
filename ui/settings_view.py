@@ -49,6 +49,8 @@ _UI_KEYS: tuple[str, ...] = (
     "follow_symlinks",
     "musicbrainz_enabled",
     "editor_exclusions",
+    "skip_filename_patterns",
+    "call_recording_patterns",
 )
 
 
@@ -178,39 +180,107 @@ class SettingsView(QWidget):
     def _build_categorisation_group(self) -> QGroupBox:
         group = QGroupBox("Categorisation")
         layout = QVBoxLayout(group)
-        layout.setSpacing(6)
+        layout.setSpacing(10)
 
-        label = QLabel(
+        # --- Editor exclusions ----------------------------------------
+        excl_label = QLabel(
             "Editor software exceptions — photos tagged with these programs are\n"
             "treated as Originals instead of Edited and receive a JPEG export."
         )
-        label.setStyleSheet("color: #aaa; font-size: 11px;")
-        label.setWordWrap(True)
-        layout.addWidget(label)
+        excl_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        excl_label.setWordWrap(True)
+        layout.addWidget(excl_label)
 
         self._exclusions_list = QListWidget()
-        self._exclusions_list.setFixedHeight(90)
+        self._exclusions_list.setFixedHeight(80)
         self._exclusions_list.setAlternatingRowColors(True)
         layout.addWidget(self._exclusions_list)
 
-        input_row = QHBoxLayout()
-        input_row.setSpacing(6)
+        excl_input_row = QHBoxLayout()
+        excl_input_row.setSpacing(6)
         self._exclusion_input = QLineEdit()
         self._exclusion_input.setPlaceholderText("Software name (e.g. Picasa)")
         self._exclusion_input.returnPressed.connect(self._add_exclusion)
-        input_row.addWidget(self._exclusion_input)
+        excl_input_row.addWidget(self._exclusion_input)
 
         btn_add = QPushButton("Add")
         btn_add.setFixedWidth(60)
         btn_add.clicked.connect(self._add_exclusion)
-        input_row.addWidget(btn_add)
+        excl_input_row.addWidget(btn_add)
 
         btn_remove = QPushButton("Remove")
         btn_remove.setFixedWidth(70)
         btn_remove.clicked.connect(self._remove_exclusion)
-        input_row.addWidget(btn_remove)
+        excl_input_row.addWidget(btn_remove)
 
-        layout.addLayout(input_row)
+        layout.addLayout(excl_input_row)
+
+        # --- Skip filename patterns ------------------------------------
+        skip_label = QLabel(
+            "Skip filename patterns — files whose names match these glob patterns\n"
+            "are ignored entirely (e.g. *.supplemental-metadata.json)."
+        )
+        skip_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        skip_label.setWordWrap(True)
+        layout.addWidget(skip_label)
+
+        self._skip_patterns_list = QListWidget()
+        self._skip_patterns_list.setFixedHeight(70)
+        self._skip_patterns_list.setAlternatingRowColors(True)
+        layout.addWidget(self._skip_patterns_list)
+
+        skip_input_row = QHBoxLayout()
+        skip_input_row.setSpacing(6)
+        self._skip_pattern_input = QLineEdit()
+        self._skip_pattern_input.setPlaceholderText("Glob pattern (e.g. *.supplemental-metadata.json)")
+        self._skip_pattern_input.returnPressed.connect(self._add_skip_pattern)
+        skip_input_row.addWidget(self._skip_pattern_input)
+
+        btn_skip_add = QPushButton("Add")
+        btn_skip_add.setFixedWidth(60)
+        btn_skip_add.clicked.connect(self._add_skip_pattern)
+        skip_input_row.addWidget(btn_skip_add)
+
+        btn_skip_remove = QPushButton("Remove")
+        btn_skip_remove.setFixedWidth(70)
+        btn_skip_remove.clicked.connect(self._remove_skip_pattern)
+        skip_input_row.addWidget(btn_skip_remove)
+
+        layout.addLayout(skip_input_row)
+
+        # --- Call recording patterns -----------------------------------
+        call_label = QLabel(
+            "Call recording filename patterns — audio files matching these glob\n"
+            "patterns are placed in the Call Recordings folder."
+        )
+        call_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        call_label.setWordWrap(True)
+        layout.addWidget(call_label)
+
+        self._call_patterns_list = QListWidget()
+        self._call_patterns_list.setFixedHeight(70)
+        self._call_patterns_list.setAlternatingRowColors(True)
+        layout.addWidget(self._call_patterns_list)
+
+        call_input_row = QHBoxLayout()
+        call_input_row.setSpacing(6)
+        self._call_pattern_input = QLineEdit()
+        self._call_pattern_input.setPlaceholderText("Glob pattern (e.g. SIM*_*_*)")
+        self._call_pattern_input.returnPressed.connect(self._add_call_pattern)
+        call_input_row.addWidget(self._call_pattern_input)
+
+        btn_call_add = QPushButton("Add")
+        btn_call_add.setFixedWidth(60)
+        btn_call_add.clicked.connect(self._add_call_pattern)
+        call_input_row.addWidget(btn_call_add)
+
+        btn_call_remove = QPushButton("Remove")
+        btn_call_remove.setFixedWidth(70)
+        btn_call_remove.clicked.connect(self._remove_call_pattern)
+        call_input_row.addWidget(btn_call_remove)
+
+        layout.addLayout(call_input_row)
+
         return group
 
     def _add_exclusion(self) -> None:
@@ -230,6 +300,42 @@ class SettingsView(QWidget):
     def _remove_exclusion(self) -> None:
         for item in self._exclusions_list.selectedItems():
             self._exclusions_list.takeItem(self._exclusions_list.row(item))
+        self._on_widget_changed()
+
+    def _add_skip_pattern(self) -> None:
+        text = self._skip_pattern_input.text().strip()
+        if not text:
+            return
+        existing = [
+            self._skip_patterns_list.item(i).text()
+            for i in range(self._skip_patterns_list.count())
+        ]
+        if text not in existing:
+            self._skip_patterns_list.addItem(text)
+            self._on_widget_changed()
+        self._skip_pattern_input.clear()
+
+    def _remove_skip_pattern(self) -> None:
+        for item in self._skip_patterns_list.selectedItems():
+            self._skip_patterns_list.takeItem(self._skip_patterns_list.row(item))
+        self._on_widget_changed()
+
+    def _add_call_pattern(self) -> None:
+        text = self._call_pattern_input.text().strip()
+        if not text:
+            return
+        existing = [
+            self._call_patterns_list.item(i).text()
+            for i in range(self._call_patterns_list.count())
+        ]
+        if text not in existing:
+            self._call_patterns_list.addItem(text)
+            self._on_widget_changed()
+        self._call_pattern_input.clear()
+
+    def _remove_call_pattern(self) -> None:
+        for item in self._call_patterns_list.selectedItems():
+            self._call_patterns_list.takeItem(self._call_patterns_list.row(item))
         self._on_widget_changed()
 
     def _build_advanced_group(self) -> QGroupBox:
@@ -327,18 +433,38 @@ class SettingsView(QWidget):
             self._exclusions_list.addItem(name)
         self._exclusions_list.blockSignals(False)
 
+        self._skip_patterns_list.blockSignals(True)
+        self._skip_patterns_list.clear()
+        for pattern in (cfg.get("skip_filename_patterns") or []):
+            self._skip_patterns_list.addItem(pattern)
+        self._skip_patterns_list.blockSignals(False)
+
+        self._call_patterns_list.blockSignals(True)
+        self._call_patterns_list.clear()
+        for pattern in (cfg.get("call_recording_patterns") or []):
+            self._call_patterns_list.addItem(pattern)
+        self._call_patterns_list.blockSignals(False)
+
     def _read_widgets(self) -> dict:
         """Collect current widget values into a dict."""
         return {
-            "jpeg_quality":        self._jpeg_quality.value(),
-            "max_resolution":      _RESOLUTIONS[self._max_resolution.currentIndex()][1],
-            "threads":             self._threads.value(),
-            "verify_copies":       self._verify_copies.isChecked(),
-            "follow_symlinks":     self._follow_symlinks.isChecked(),
-            "musicbrainz_enabled": self._musicbrainz.isChecked(),
-            "editor_exclusions":   [
+            "jpeg_quality":           self._jpeg_quality.value(),
+            "max_resolution":         _RESOLUTIONS[self._max_resolution.currentIndex()][1],
+            "threads":                self._threads.value(),
+            "verify_copies":          self._verify_copies.isChecked(),
+            "follow_symlinks":        self._follow_symlinks.isChecked(),
+            "musicbrainz_enabled":    self._musicbrainz.isChecked(),
+            "editor_exclusions":      [
                 self._exclusions_list.item(i).text()
                 for i in range(self._exclusions_list.count())
+            ],
+            "skip_filename_patterns": [
+                self._skip_patterns_list.item(i).text()
+                for i in range(self._skip_patterns_list.count())
+            ],
+            "call_recording_patterns": [
+                self._call_patterns_list.item(i).text()
+                for i in range(self._call_patterns_list.count())
             ],
         }
 

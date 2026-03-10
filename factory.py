@@ -194,6 +194,7 @@ class AppFactory:
             audio_processor=self.audio_processor(),
             document_processor=self.document_processor(),
             dry_run=dry_run,
+            skip_filename_patterns=self.config.get("skip_filename_patterns", []),
         )
 
     def session_manager(self) -> SessionManager:

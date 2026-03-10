@@ -133,6 +133,16 @@ class ConfigManager:
                 raise ValueError(
                     f"editor_exclusions must be a list of strings, got {value!r}"
                 )
+        elif key == "skip_filename_patterns":
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise ValueError(
+                    f"skip_filename_patterns must be a list of strings, got {value!r}"
+                )
+        elif key == "call_recording_patterns":
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise ValueError(
+                    f"call_recording_patterns must be a list of strings, got {value!r}"
+                )
 
     # ------------------------------------------------------------------
     # Convenience properties
@@ -190,6 +200,14 @@ class ConfigManager:
     @property
     def date_regex_patterns(self) -> list[re.Pattern[str]]:
         return self._compile_patterns(self.get("date_regex_patterns", []))
+
+    @property
+    def skip_filename_patterns(self) -> list[str]:
+        return self.get("skip_filename_patterns", [])
+
+    @property
+    def call_recording_patterns(self) -> list[str]:
+        return self.get("call_recording_patterns", [])
 
     # ------------------------------------------------------------------
     # Regex compilation cache

@@ -80,6 +80,19 @@ class TestDefaultLoading:
         assert "threads" in merged
         assert "date_regex_patterns" in merged
 
+    def test_skip_filename_patterns_default(self, tmp_config_dir: Path) -> None:
+        cm = ConfigManager(config_dir=str(tmp_config_dir))
+        patterns = cm.skip_filename_patterns
+        assert isinstance(patterns, list)
+        assert "*.supplemental-metadata.json" in patterns
+
+    def test_call_recording_patterns_default(self, tmp_config_dir: Path) -> None:
+        cm = ConfigManager(config_dir=str(tmp_config_dir))
+        patterns = cm.call_recording_patterns
+        assert isinstance(patterns, list)
+        assert "SIM*_*_*" in patterns
+        assert "Call_*" in patterns
+
 
 # ------------------------------------------------------------------
 # User config override
@@ -234,6 +247,32 @@ class TestValidation:
         cm = ConfigManager(config_dir=str(tmp_config_dir))
         with pytest.raises(ValueError, match="threads"):
             cm.save_user_config({"threads": 0})
+
+    def test_skip_filename_patterns_not_list(self, tmp_config_dir: Path) -> None:
+        cm = ConfigManager(config_dir=str(tmp_config_dir))
+        with pytest.raises(ValueError, match="skip_filename_patterns"):
+            cm.set("skip_filename_patterns", "*.json")
+
+    def test_skip_filename_patterns_non_string_elements(self, tmp_config_dir: Path) -> None:
+        cm = ConfigManager(config_dir=str(tmp_config_dir))
+        with pytest.raises(ValueError, match="skip_filename_patterns"):
+            cm.set("skip_filename_patterns", [1, 2])
+
+    def test_call_recording_patterns_not_list(self, tmp_config_dir: Path) -> None:
+        cm = ConfigManager(config_dir=str(tmp_config_dir))
+        with pytest.raises(ValueError, match="call_recording_patterns"):
+            cm.set("call_recording_patterns", "SIM*")
+
+    def test_skip_filename_patterns_valid(self, tmp_config_dir: Path) -> None:
+        cm = ConfigManager(config_dir=str(tmp_config_dir))
+        # Should not raise.
+        cm.set("skip_filename_patterns", ["*.json", "*.tmp"])
+        assert cm.skip_filename_patterns == ["*.json", "*.tmp"]
+
+    def test_call_recording_patterns_valid(self, tmp_config_dir: Path) -> None:
+        cm = ConfigManager(config_dir=str(tmp_config_dir))
+        cm.set("call_recording_patterns", ["SIM*_*_*", "Call_*"])
+        assert cm.call_recording_patterns == ["SIM*_*_*", "Call_*"]
 
 
 # ------------------------------------------------------------------

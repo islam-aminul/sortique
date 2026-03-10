@@ -160,10 +160,29 @@ class TestImageSocialMedia:
         "IMG-20240315-WA0001.jpg",
         "FB_IMG_1710000000.jpg",
         "received_123456789.jpg",
+        # UUID-format filename (e.g. downloaded from social apps)
+        "aba82dfd-60ee-4a20-81ee-e160c7f01c4a.jpg",
+        "0c7cbc5e-ddf8-4f18-8ee8-c0a9aeb6d402.jpg",
+        # WA with edited suffix
+        "IMG-20201126-WA0003-edited.jpg",
     ])
     def test_social_media_patterns(self, cat, name):
         exif = _exif()
         assert cat.categorize_image(f"/p/{name}", exif, "jpeg") == "Social Media"
+
+    def test_uuid_beats_screenshot_resolution(self, cat):
+        """UUID-named file with phone resolution → Social Media, not Screenshots."""
+        exif = _exif(width=1080, height=1920)
+        assert cat.categorize_image(
+            "/p/aba82dfd-60ee-4a20-81ee-e160c7f01c4a.jpg", exif, "jpeg",
+        ) == "Social Media"
+
+    def test_wa_filename_beats_screenshot_resolution(self, cat):
+        """WhatsApp image with phone resolution → Social Media, not Screenshots."""
+        exif = _exif(width=1080, height=1920)
+        assert cat.categorize_image(
+            "/p/IMG-20201126-WA0003.jpg", exif, "jpeg",
+        ) == "Social Media"
 
     def test_non_matching_name(self, cat):
         exif = _exif()
@@ -238,10 +257,17 @@ class TestImagePriorityOrder:
         assert cat.categorize_image("/p/IMG-20240315-WA0001.jpg", exif, "jpeg") == "Edited"
 
     def test_screenshot_filename_beats_social_media(self, cat):
-        """Unlikely combo, but filename check for screenshot comes first."""
+        """Screenshot filename pattern fires before social-media pattern."""
         assert cat.categorize_image(
             "/p/Screenshot_001.png", _exif(), "png",
         ) == "Screenshots"
+
+    def test_social_media_beats_screenshot_resolution(self, cat):
+        """Social-media filename matches before resolution heuristic fires."""
+        exif = _exif(width=1080, height=1920)
+        assert cat.categorize_image(
+            "/p/IMG-20240315-WA0001.jpg", exif, "jpeg",
+        ) == "Social Media"
 
     def test_social_media_beats_originals(self, cat):
         exif = _exif(make="Apple")
@@ -298,20 +324,57 @@ class TestVideoSocialMedia:
         assert cat.categorize_video(f"/p/{name}", meta) == "Social Media"
 
 
-class TestVideoOriginals:
-    """Priority 3: Has make / model metadata."""
+class TestVideoCamera:
+    """Priority 3: Has make / model metadata → Camera."""
 
-    def test_with_make(self, cat):
+    def test_with_make_and_model(self, cat):
         meta = _video(make="Apple", model="iPhone 15")
-        assert cat.categorize_video("/p/clip.mp4", meta) == "Originals"
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Camera"
 
     def test_with_model_only(self, cat):
         meta = _video(model="GoPro HERO12")
-        assert cat.categorize_video("/p/clip.mp4", meta) == "Originals"
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Camera"
+
+
+class TestVideoMobile:
+    """Priority 4: GPS / old mobile formats → Mobile."""
+
+    def test_has_location(self, cat):
+        """Android camera recording with GPS but no make/model → Mobile."""
+        meta = _video(has_location=True)
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Mobile"
+
+    def test_3gp_extension(self, cat):
+        """Old Nokia/Sony Ericsson 3GP recording → Mobile."""
+        meta = _video(duration_seconds=60.0)
+        assert cat.categorize_video("/p/clip.3gp", meta) == "Mobile"
+
+    def test_3g2_extension(self, cat):
+        meta = _video(duration_seconds=60.0)
+        assert cat.categorize_video("/p/clip.3g2", meta) == "Mobile"
+
+    def test_location_beats_movies(self, cat):
+        """Long Android recording with GPS → Mobile, not Movies."""
+        meta = _video(has_location=True, duration_seconds=2000.0)
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Mobile"
+
+
+class TestVideoCamcorder:
+    """Priority 5: Dedicated recording-device formats → Camcorder."""
+
+    @pytest.mark.parametrize("ext", [".mts", ".m2ts", ".mod", ".tod", ".mxf"])
+    def test_camcorder_extensions(self, cat, ext):
+        meta = _video(duration_seconds=300.0)
+        assert cat.categorize_video(f"/p/clip{ext}", meta) == "Camcorder"
+
+    def test_camcorder_beats_movies(self, cat):
+        """Long MTS recording → Camcorder, not Movies."""
+        meta = _video(duration_seconds=2000.0)
+        assert cat.categorize_video("/p/clip.mts", meta) == "Camcorder"
 
 
 class TestVideoMovies:
-    """Priority 4: Long video (> 15 min / 900 s)."""
+    """Priority 6: Long video (> 15 min / 900 s), no camera signal."""
 
     def test_long_video(self, cat):
         meta = _video(duration_seconds=1800.0)
@@ -328,19 +391,19 @@ class TestVideoMovies:
 
     def test_duration_unknown_skips_movie_check(self, cat):
         meta = _video(duration_unknown=True)
-        assert cat.categorize_video("/p/long_movie.mp4", meta) == "Originals/Unknown"
+        assert cat.categorize_video("/p/long_movie.mp4", meta) == "Clips"
 
 
-class TestVideoFallback:
-    """Priority 5: Originals/Unknown."""
+class TestVideoClips:
+    """Priority 7: Clips catch-all."""
 
     def test_plain_video(self, cat):
         meta = _video(duration_seconds=60.0)
-        assert cat.categorize_video("/p/clip.mp4", meta) == "Originals/Unknown"
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Clips"
 
     def test_no_metadata_at_all(self, cat):
         meta = _video(duration_unknown=True)
-        assert cat.categorize_video("/p/clip.mp4", meta) == "Originals/Unknown"
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Clips"
 
 
 class TestVideoPriorityOrder:
@@ -354,15 +417,16 @@ class TestVideoPriorityOrder:
             "/p/VID_20240315_MVIMG_WA001.mp4", meta,
         ) == "Motion Photos"
 
-    def test_social_media_beats_originals(self, cat):
+    def test_social_media_beats_camera(self, cat):
         meta = _video(make="Apple", model="iPhone 15")
         assert cat.categorize_video(
             "/p/VID-20240315-WA0001.mp4", meta,
         ) == "Social Media"
 
-    def test_originals_beats_movies(self, cat):
+    def test_camera_beats_movies(self, cat):
+        """Camera make present → Camera even if duration > 15 min."""
         meta = _video(make="Sony", duration_seconds=2000.0)
-        assert cat.categorize_video("/p/clip.mp4", meta) == "Originals"
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Camera"
 
 
 # ===========================================================================
@@ -412,8 +476,36 @@ class TestAudioWhatsApp:
         assert cat.categorize_audio("/p/voice_message.opus", meta) != "WhatsApp"
 
 
+class TestAudioCallRecordings:
+    """Priority 3: Call recording filename patterns."""
+
+    @pytest.mark.parametrize("name", [
+        "SIM2_20161225_2003.wav",
+        "SIM1_20240101_120000.mp3",
+        "Call_20240315_123456.m4a",
+        "incoming_20240315_120000.wav",
+        "outgoing_20240315_130000.wav",
+        "record_001.wav",
+        "callrecord_20240101.mp3",
+    ])
+    def test_call_recording_patterns(self, cat, name):
+        meta = _audio()
+        assert cat.categorize_audio(f"/p/{name}", meta) == "Call Recordings"
+
+    def test_not_call_recording_untagged(self, cat):
+        """Generic audio file not matching call pattern → Collection."""
+        meta = _audio()
+        assert cat.categorize_audio("/p/audio_note.wav", meta) != "Call Recordings"
+
+    def test_call_recording_any_extension(self, cat):
+        """Call recording patterns are extension-agnostic."""
+        meta = _audio(has_tags=True)
+        # Even with tags, SIM* pattern wins over Songs.
+        assert cat.categorize_audio("/p/SIM2_20161225_2003.wav", meta) == "Call Recordings"
+
+
 class TestAudioSongs:
-    """Priority 3: has_tags is True."""
+    """Priority 4: has_tags is True."""
 
     def test_tagged_audio(self, cat):
         meta = _audio(has_tags=True, title="My Song", artist="Band")
@@ -425,7 +517,7 @@ class TestAudioSongs:
 
 
 class TestAudioCollection:
-    """Priority 4: Fallback."""
+    """Priority 5: Fallback."""
 
     def test_untagged_audio(self, cat):
         meta = _audio()
@@ -442,6 +534,11 @@ class TestAudioPriorityOrder:
     def test_whatsapp_beats_songs(self, cat):
         meta = _audio(has_tags=True)
         assert cat.categorize_audio("/p/PTT-20240315-WA0001.opus", meta) == "WhatsApp"
+
+    def test_call_recordings_beats_songs(self, cat):
+        """Call recording pattern + has_tags → Call Recordings (rule 3 before 4)."""
+        meta = _audio(has_tags=True)
+        assert cat.categorize_audio("/p/SIM2_20161225_2003.wav", meta) == "Call Recordings"
 
 
 # ===========================================================================
@@ -468,10 +565,10 @@ class TestDocumentCategories:
         (".json", "Documents/Code"),
         (".yaml", "Documents/Code"),
         (".css", "Documents/Code"),
-        (".csv", "Documents/Other"),
-        (".epub", "Documents/Other"),
-        (".odt", "Documents/Other"),
-        (".log", "Documents/Other"),
+        (".csv", "Documents/Others"),
+        (".epub", "Documents/Others"),
+        (".odt", "Documents/Others"),
+        (".log", "Documents/Others"),
     ])
     def test_extension_mapping(self, cat, ext, expected):
         assert cat.categorize_document(f"/docs/file{ext}") == expected
@@ -481,7 +578,7 @@ class TestDocumentCategories:
         assert cat.categorize_document("/docs/file.Docx") == "Documents/Word"
 
     def test_unknown_extension(self, cat):
-        assert cat.categorize_document("/docs/file.xyz") == "Documents/Other"
+        assert cat.categorize_document("/docs/file.xyz") == "Documents/Others"
 
 
 # ===========================================================================

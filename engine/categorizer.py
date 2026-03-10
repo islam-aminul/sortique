@@ -26,6 +26,23 @@ _RAW_FORMATS: frozenset[str] = frozenset({
 
 
 # ---------------------------------------------------------------------------
+# Video format sets for source-type detection
+# ---------------------------------------------------------------------------
+
+# Formats exclusively produced by old mobile phones (Nokia, Sony Ericsson, etc.)
+# and early smartphones.  Never used for downloads or streaming.
+_MOBILE_PHONE_EXTS: frozenset[str] = frozenset({".3gp", ".3g2"})
+
+# Formats produced by dedicated recording devices (Sony/Panasonic AVCHD,
+# JVC/Canon MiniDV/XDCAM, broadcast cameras).
+_CAMCORDER_EXTS: frozenset[str] = frozenset({
+    ".mts", ".m2ts",   # Sony / Panasonic AVCHD
+    ".mod", ".tod",    # JVC / Canon MiniDV camcorders
+    ".mxf",            # Broadcast / professional cameras
+})
+
+
+# ---------------------------------------------------------------------------
 # Common display aspect ratios as integer pairs  (checked both orientations)
 # ---------------------------------------------------------------------------
 
@@ -83,12 +100,14 @@ class Categorizer:
 
         1. ``RAW``
         2. ``Edited``
-        3. ``Screenshots``
-        4. ``Social Media``
-        5. ``Hidden``
-        6. ``Originals``
-        7. ``Export``
-        8. ``Collection``
+        3. ``Screenshots``  (filename pattern only)
+        4. ``Social Media`` (filename pattern — before resolution heuristic to
+                             avoid misclassifying WA / UUID-named images)
+        5. ``Screenshots``  (resolution / display-ratio heuristic)
+        6. ``Hidden``
+        7. ``Originals``
+        8. ``Export``
+        9. ``Collection``
         """
         filename = Path(filepath).name
         ext = Path(filepath).suffix.lower()
@@ -110,11 +129,19 @@ class Categorizer:
             if is_editor and not is_excluded:
                 return "Edited"
 
-        # 3. Screenshots ------------------------------------------------
+        # 3. Screenshots — explicit filename patterns -------------------
         screenshot_patterns = self.config.get("screenshot_filename_patterns", [])
         if self._matches_glob_patterns(filename, screenshot_patterns):
             return "Screenshots"
 
+        # 4. Social Media — filename patterns (before resolution heuristic
+        #    so WhatsApp/Facebook/UUID filenames are not falsely flagged as
+        #    screenshots due to phone-like dimensions).
+        sm_patterns = self.config.social_media_image_patterns
+        if self._matches_glob_patterns(filename, sm_patterns):
+            return "Social Media"
+
+        # 5. Screenshots — resolution / display-ratio heuristic ---------
         has_camera = exif.make is not None
         has_gps = exif.gps_lat is not None or exif.gps_lon is not None
 
@@ -130,21 +157,16 @@ class Categorizer:
         ):
             return "Screenshots"
 
-        # 4. Social Media -----------------------------------------------
-        sm_patterns = self.config.social_media_image_patterns
-        if self._matches_glob_patterns(filename, sm_patterns):
-            return "Social Media"
-
-        # 5. Hidden (sidecar) -------------------------------------------
+        # 6. Hidden (sidecar) -------------------------------------------
         sidecar_exts = self.config.sidecar_extensions
         if ext in {e.lower() for e in sidecar_exts}:
             return "Hidden"
 
-        # 6. Originals --------------------------------------------------
+        # 7. Originals --------------------------------------------------
         if exif.make is not None:
             return "Originals"
 
-        # 7. Export -----------------------------------------------------
+        # 8. Export -----------------------------------------------------
         has_date = any([
             exif.date_original,
             exif.date_digitized,
@@ -153,7 +175,7 @@ class Categorizer:
         if has_date:
             return "Export"
 
-        # 8. Collection -------------------------------------------------
+        # 9. Collection -------------------------------------------------
         return "Collection"
 
     # ------------------------------------------------------------------
@@ -166,15 +188,20 @@ class Categorizer:
         Priority:
 
         1. ``Motion Photos``  — duration < 10 s AND filename matches motion patterns
-        2. ``Social Media``
-        3. ``Originals``      — has make / model
-        4. ``Movies``         — duration > 15 minutes (900 s)
-        5. ``Originals/Unknown``
+        2. ``Social Media``   — filename matches social-media patterns
+        3. ``Camera``         — make or model metadata found (phone / dedicated camera)
+        4. ``Mobile``         — GPS coordinates present (Android phone) OR old
+                                mobile-phone format (.3gp / .3g2)
+        5. ``Camcorder``      — dedicated recording-device format
+                                (.mts, .m2ts, .mod, .tod, .mxf)
+        6. ``Movies``         — duration > 15 minutes (900 s), no camera signal
+        7. ``Clips``          — catch-all for everything else
 
-        Duration-based rules (1, 4) are skipped when ``duration_unknown``
+        Duration-based rules (1, 6) are skipped when ``duration_unknown``
         is ``True``.
         """
         filename = Path(filepath).name
+        ext = Path(filepath).suffix.lower()
 
         # 1. Motion Photos ----------------------------------------------
         has_duration = (
@@ -194,16 +221,24 @@ class Categorizer:
         if self._matches_glob_patterns(filename, sm_patterns):
             return "Social Media"
 
-        # 3. Originals --------------------------------------------------
+        # 3. Camera — identified by make / model metadata ---------------
         if video_meta.make is not None or video_meta.model is not None:
-            return "Originals"
+            return "Camera"
 
-        # 4. Movies -----------------------------------------------------
+        # 4. Mobile — GPS coordinates (Android) or old mobile format ----
+        if video_meta.has_location or ext in _MOBILE_PHONE_EXTS:
+            return "Mobile"
+
+        # 5. Camcorder — dedicated recording-device format --------------
+        if ext in _CAMCORDER_EXTS:
+            return "Camcorder"
+
+        # 6. Movies -----------------------------------------------------
         if has_duration and video_meta.duration_seconds > 900:
             return "Movies"
 
-        # 5. Fallback ---------------------------------------------------
-        return "Originals/Unknown"
+        # 7. Catch-all --------------------------------------------------
+        return "Clips"
 
     # ------------------------------------------------------------------
     # Audio
@@ -214,10 +249,11 @@ class Categorizer:
 
         Priority:
 
-        1. ``Voice Notes``  — extension in (.m4a, .aac, .amr) AND filename matches
-        2. ``WhatsApp``     — extension in (.opus, .ogg) AND ``PTT-*-WA*``
-        3. ``Songs``        — ``has_tags`` is True
-        4. ``Collection``
+        1. ``Voice Notes``      — extension in (.m4a, .aac, .amr) AND filename matches
+        2. ``WhatsApp``         — extension in (.opus, .ogg) AND ``PTT-*-WA*``
+        3. ``Call Recordings``  — filename matches configurable call-recording patterns
+        4. ``Songs``            — ``has_tags`` is True
+        5. ``Collection``
         """
         filename = Path(filepath).name
         ext = Path(filepath).suffix.lower()
@@ -235,11 +271,16 @@ class Categorizer:
         ):
             return "WhatsApp"
 
-        # 3. Songs ------------------------------------------------------
+        # 3. Call Recordings --------------------------------------------
+        call_patterns = self.config.get("call_recording_patterns", [])
+        if self._matches_glob_patterns(filename, call_patterns):
+            return "Call Recordings"
+
+        # 4. Songs ------------------------------------------------------
         if audio_meta.has_tags:
             return "Songs"
 
-        # 4. Collection -------------------------------------------------
+        # 5. Collection -------------------------------------------------
         return "Collection"
 
     # ------------------------------------------------------------------
@@ -266,7 +307,7 @@ class Categorizer:
             return "Documents/PowerPoint"
         if ext in _DOC_CODE:
             return "Documents/Code"
-        return "Documents/Other"
+        return "Documents/Others"
 
     # ------------------------------------------------------------------
     # Helpers
