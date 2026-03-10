@@ -90,7 +90,7 @@ python -m pip install --quiet -r requirements.txt 2>/dev/null || true
 python -m pip install --quiet "pyinstaller>=6.0.0"
 
 # Report optional packages
-python -c "import rawpy" 2>/dev/null        || echo "WARNING: rawpy not available — RAW file support disabled"
+python -c "import rawpy" 2>/dev/null         || echo "WARNING: rawpy not available — RAW file support disabled"
 python -c "import pillow_heif" 2>/dev/null   || echo "WARNING: pillow-heif not available — HEIC/HEIF support disabled"
 python -c "import magic" 2>/dev/null         || echo "WARNING: python-magic not available — magic-byte detection limited"
 
