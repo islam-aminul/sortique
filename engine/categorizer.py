@@ -33,6 +33,25 @@ _RAW_FORMATS: frozenset[str] = frozenset({
 # and early smartphones.  Never used for downloads or streaming.
 _MOBILE_PHONE_EXTS: frozenset[str] = frozenset({".3gp", ".3g2"})
 
+# ---------------------------------------------------------------------------
+# Audio: unambiguous music file extensions
+# ---------------------------------------------------------------------------
+
+# These formats are virtually never used for voice recordings, call recordings,
+# or WhatsApp — they are exclusively or overwhelmingly used for music.
+# We fall back to Songs for files with these extensions even when there are no
+# embedded metadata tags (e.g. a large ripped / downloaded music collection).
+_MUSIC_EXTS: frozenset[str] = frozenset({
+    ".mp3",   # MPEG Layer-3 — the most common music format
+    ".flac",  # Free Lossless Audio Codec — almost always music
+    ".wma",   # Windows Media Audio — typically music
+    ".aiff",  # Apple Interchange File Format — typically music
+    ".aif",   # Alias for AIFF
+    ".ape",   # Monkey's Audio — lossless music
+    ".alac",  # Apple Lossless (inside .m4a/raw) — music
+    ".wav",   # Although ambiguous, large .wav collections are almost always music
+})
+
 # Formats produced by dedicated recording devices (Sony/Panasonic AVCHD,
 # JVC/Canon MiniDV/XDCAM, broadcast cameras).
 _CAMCORDER_EXTS: frozenset[str] = frozenset({
@@ -252,8 +271,9 @@ class Categorizer:
         1. ``Voice Notes``      — extension in (.m4a, .aac, .amr) AND filename matches
         2. ``WhatsApp``         — extension in (.opus, .ogg) AND ``PTT-*-WA*``
         3. ``Call Recordings``  — filename matches configurable call-recording patterns
-        4. ``Songs``            — ``has_tags`` is True
-        5. ``Collection``
+        4. ``Songs``            — ``has_tags`` is True (tagged music of any extension)
+        5. ``Songs``            — extension is an unambiguous music format (mp3, flac …)
+        6. ``Collection``       — everything else (amr, aac, wav, ogg … without signals)
         """
         filename = Path(filepath).name
         ext = Path(filepath).suffix.lower()
@@ -276,11 +296,18 @@ class Categorizer:
         if self._matches_glob_patterns(filename, call_patterns):
             return "Call Recordings"
 
-        # 4. Songs ------------------------------------------------------
+        # 4. Songs (tagged) --------------------------------------------
         if audio_meta.has_tags:
             return "Songs"
 
-        # 5. Collection -------------------------------------------------
+        # 5. Songs (music-extension fallback) --------------------------
+        # Many ripped / downloaded music collections lack embedded ID3 / Vorbis
+        # tags.  Files with these extensions are almost exclusively music, so we
+        # still send them to Songs rather than the generic Collection bucket.
+        if ext in _MUSIC_EXTS:
+            return "Songs"
+
+        # 6. Collection -------------------------------------------------
         return "Collection"
 
     # ------------------------------------------------------------------

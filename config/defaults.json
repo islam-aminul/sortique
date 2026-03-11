@@ -74,10 +74,7 @@
 
   "call_recording_patterns": [
     "SIM*_*_*",
-    "Call_*",
-    "incoming_*",
-    "outgoing_*",
-    "record_*",
+    "Call_[0-9]*",
     "callrecord_*"
   ],
 

@@ -91,7 +91,10 @@ class TestDefaultLoading:
         patterns = cm.call_recording_patterns
         assert isinstance(patterns, list)
         assert "SIM*_*_*" in patterns
-        assert "Call_*" in patterns
+        assert "callrecord_*" in patterns
+        # Overly broad patterns are not in defaults
+        assert "record_*" not in patterns
+        assert "incoming_*" not in patterns
 
 
 # ------------------------------------------------------------------

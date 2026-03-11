@@ -482,10 +482,7 @@ class TestAudioCallRecordings:
     @pytest.mark.parametrize("name", [
         "SIM2_20161225_2003.wav",
         "SIM1_20240101_120000.mp3",
-        "Call_20240315_123456.m4a",
-        "incoming_20240315_120000.wav",
-        "outgoing_20240315_130000.wav",
-        "record_001.wav",
+        "Call_20240315_123456.m4a",   # Call_[digit]*
         "callrecord_20240101.mp3",
     ])
     def test_call_recording_patterns(self, cat, name):
@@ -493,8 +490,9 @@ class TestAudioCallRecordings:
         assert cat.categorize_audio(f"/p/{name}", meta) == "Call Recordings"
 
     def test_not_call_recording_untagged(self, cat):
-        """Generic audio file not matching call pattern → Collection."""
+        """Generic audio file not matching call pattern → Songs (music ext) or Collection."""
         meta = _audio()
+        # .wav → Songs (music-extension fallback), not Call Recordings
         assert cat.categorize_audio("/p/audio_note.wav", meta) != "Call Recordings"
 
     def test_call_recording_any_extension(self, cat):
@@ -502,6 +500,18 @@ class TestAudioCallRecordings:
         meta = _audio(has_tags=True)
         # Even with tags, SIM* pattern wins over Songs.
         assert cat.categorize_audio("/p/SIM2_20161225_2003.wav", meta) == "Call Recordings"
+
+    def test_record_prefix_not_call_recording(self, cat):
+        """'record_*' was removed — files like record_01.mp3 go to Songs."""
+        meta = _audio()
+        result = cat.categorize_audio("/p/record_01.mp3", meta)
+        assert result == "Songs"   # music-extension fallback, NOT Call Recordings
+
+    def test_incoming_prefix_not_call_recording(self, cat):
+        """'incoming_*' was removed to avoid catching 'incoming_tide.mp3' etc."""
+        meta = _audio()
+        result = cat.categorize_audio("/p/incoming_20240315.wav", meta)
+        assert result == "Songs"   # music-extension fallback, NOT Call Recordings
 
 
 class TestAudioSongs:
@@ -515,13 +525,51 @@ class TestAudioSongs:
         meta = _audio(has_tags=True)
         assert cat.categorize_audio("/p/track.flac", meta) == "Songs"
 
+    def test_tagged_m4a(self, cat):
+        """Tagged .m4a not matching voice pattern → Songs."""
+        meta = _audio(has_tags=True, title="Purchased Track")
+        assert cat.categorize_audio("/p/purchased.m4a", meta) == "Songs"
+
+
+class TestAudioMusicExtension:
+    """Priority 5: Untagged music formats still go to Songs."""
+
+    @pytest.mark.parametrize("name,ext", [
+        ("track_01.mp3", "mp3"),
+        ("symphony.flac", "flac"),
+        ("oldfile.wma", "wma"),
+        ("cd_rip.aiff", "aiff"),
+        ("cd_rip.aif", "aif"),
+        ("lossless.ape", "ape"),
+        ("wave_music.wav", "wav"),
+    ])
+    def test_music_extension_fallback(self, cat, name, ext):
+        """Untagged files with music extensions → Songs (not Collection)."""
+        meta = _audio()  # has_tags = False
+        assert cat.categorize_audio(f"/p/{name}", meta) == "Songs"
+
+    def test_untagged_ogg_not_songs(self, cat):
+        """Untagged .ogg that's not WhatsApp → Collection (ambiguous format)."""
+        meta = _audio()
+        assert cat.categorize_audio("/p/voice_message.ogg", meta) == "Collection"
+
+    def test_untagged_amr_not_songs(self, cat):
+        """Untagged .amr that's not voice-note → Collection (ambiguous format)."""
+        meta = _audio()
+        assert cat.categorize_audio("/p/memo.amr", meta) == "Collection"
+
 
 class TestAudioCollection:
-    """Priority 5: Fallback."""
+    """Priority 6: Fallback for truly ambiguous audio."""
 
-    def test_untagged_audio(self, cat):
+    def test_untagged_ogg(self, cat):
         meta = _audio()
-        assert cat.categorize_audio("/p/unknown.mp3", meta) == "Collection"
+        assert cat.categorize_audio("/p/unknown.ogg", meta) == "Collection"
+
+    def test_untagged_opus(self, cat):
+        """Untagged .opus not matching WhatsApp pattern → Collection."""
+        meta = _audio()
+        assert cat.categorize_audio("/p/unknown.opus", meta) == "Collection"
 
 
 class TestAudioPriorityOrder:
