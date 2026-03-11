@@ -7,7 +7,7 @@ from datetime import datetime
 import pytest
 
 from sortique.data.config_manager import ConfigManager
-from sortique.engine.categorizer import Categorizer, _DISPLAY_RATIOS, _RAW_FORMATS
+from sortique.engine.categorizer import Categorizer, _DISPLAY_RATIOS, _MUSIC_EXTS, _RAW_FORMATS
 from sortique.engine.metadata.audio_metadata import AudioMetadata
 from sortique.engine.metadata.exif_extractor import ExifResult
 from sortique.engine.metadata.video_metadata import VideoMetadata
@@ -428,6 +428,16 @@ class TestVideoPriorityOrder:
         meta = _video(make="Sony", duration_seconds=2000.0)
         assert cat.categorize_video("/p/clip.mp4", meta) == "Camera"
 
+    def test_camera_beats_mobile(self, cat):
+        """Make/model takes priority over GPS location."""
+        meta = _video(make="Sony", has_location=True)
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Camera"
+
+    def test_mobile_beats_movies(self, cat):
+        """GPS location takes priority over long duration."""
+        meta = _video(has_location=True, duration_seconds=2000.0)
+        assert cat.categorize_video("/p/clip.mp4", meta) == "Mobile"
+
 
 # ===========================================================================
 # 4.  Audio categorisation
@@ -729,3 +739,12 @@ class TestConstants:
 
     def test_display_ratios_non_empty(self):
         assert len(_DISPLAY_RATIOS) >= 3
+
+    def test_music_exts_all_have_leading_dot(self):
+        for ext in _MUSIC_EXTS:
+            assert ext.startswith("."), f"{ext} should start with '.'"
+
+    def test_music_exts_contains_common_formats(self):
+        assert ".mp3" in _MUSIC_EXTS
+        assert ".flac" in _MUSIC_EXTS
+        assert ".wav" in _MUSIC_EXTS
