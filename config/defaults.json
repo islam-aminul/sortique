@@ -75,7 +75,8 @@
   "call_recording_patterns": [
     "SIM*_*_*",
     "Call_[0-9]*",
-    "callrecord_*"
+    "callrecord_*",
+    "*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9]*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*"
   ],
 
   "sidecar_extensions": [

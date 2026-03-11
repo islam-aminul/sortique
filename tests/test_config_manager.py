@@ -92,6 +92,9 @@ class TestDefaultLoading:
         assert isinstance(patterns, list)
         assert "SIM*_*_*" in patterns
         assert "callrecord_*" in patterns
+        # Samsung ContactName_PhoneNumber_Timestamp pattern is included
+        samsung_pattern = "*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9]*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*"
+        assert samsung_pattern in patterns
         # Overly broad patterns are not in defaults
         assert "record_*" not in patterns
         assert "incoming_*" not in patterns

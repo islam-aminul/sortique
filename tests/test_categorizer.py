@@ -484,6 +484,10 @@ class TestAudioCallRecordings:
         "SIM1_20240101_120000.mp3",
         "Call_20240315_123456.m4a",   # Call_[digit]*
         "callrecord_20240101.mp3",
+        # Samsung call recorder: ContactName_PhoneNumber_YYYYMMDD_HHMMSS.m4a
+        "JohnDoe_1234567890_20240311_103000.m4a",
+        "Unknown_9876543210_20240315_140530.m4a",
+        "Mom_441234567890_20240101_090000.m4a",   # with country code digits
     ])
     def test_call_recording_patterns(self, cat, name):
         meta = _audio()
