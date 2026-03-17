@@ -546,6 +546,7 @@ class OrganizeView(QWidget):
             self._file_records,
             dest,
             self._session_id,
+            source_dirs=self._source_sel.source_dirs(),
             parent=self,
         )
         worker.progress.connect(self._on_pipeline_progress)

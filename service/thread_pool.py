@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from sortique.data.database import Database
     from sortique.data.models import FileRecord
     from sortique.service.pipeline import Pipeline
+    from sortique.service.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +59,12 @@ class FileProcessorPool:
         pipeline: Pipeline,
         db: Database,
         num_workers: int = DEFAULT_THREADS,
+        session_logger: SessionLogger | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._db = db
         self._num_workers = min(max(num_workers, 1), MAX_THREADS)
+        self._session_logger = session_logger
 
         self._paused = threading.Event()
         self._paused.set()  # starts unpaused
@@ -142,6 +145,10 @@ class FileProcessorPool:
                 )
             self._progress.current_file = None
 
+        if self._session_logger is not None:
+            self._session_logger.write_summary(self._progress)
+            self._session_logger.close()
+
         return self._progress
 
     @property
@@ -184,6 +191,10 @@ class FileProcessorPool:
 
             # --- process ---
             result = self._pipeline.process_file(record)
+
+            # --- log result ---
+            if self._session_logger is not None:
+                self._session_logger.log_file(record, result)
 
             # --- aggregate progress ---
             with self._lock:

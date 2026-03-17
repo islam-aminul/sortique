@@ -206,11 +206,29 @@ class AppFactory:
     def space_checker(self) -> SpaceChecker:
         return self._singleton("space_checker", SpaceChecker)
 
-    def thread_pool(self, destination_dir: str) -> FileProcessorPool:
+    def session_logger(
+        self, destination_dir: str, source_dirs: list[str],
+    ) -> SessionLogger:
+        """Create a SessionLogger writing to ``<destination>/logs/``."""
+        from sortique.service.session_logger import SessionLogger
+
+        return SessionLogger(destination_dir, source_dirs)
+
+    def thread_pool(
+        self,
+        destination_dir: str,
+        source_dirs: list[str] | None = None,
+    ) -> FileProcessorPool:
         """Create a thread pool with a fresh Pipeline.  New instance each call."""
         pipe = self.pipeline(destination_dir)
+        logger = (
+            self.session_logger(destination_dir, source_dirs)
+            if source_dirs
+            else None
+        )
         return FileProcessorPool(
             pipe, self.db, num_workers=self.config.threads,
+            session_logger=logger,
         )
 
     def dry_run_manager(self, destination_dir: str) -> DryRunManager:

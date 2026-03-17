@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sortique = "sortique.app:main"
+sortique = "sortique.__main__:main"
 
 [project.optional-dependencies]
 dev = [

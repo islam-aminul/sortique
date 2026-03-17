@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(python3 -m pytest tests/test_session_logger.py tests/test_cli.py -v)",
+      "Read(//mnt/c/Users/aminu/WorkSpace/Projects/Sortique/.venv/**)",
+      "Read(//mnt/c/Users/aminu/WorkSpace/Projects/Sortique/**)",
+      "Bash(find /mnt/c/Users/aminu/WorkSpace/Projects/Sortique -name python* -o -name pytest*)",
+      "Bash(pip3 install:*)",
+      "Read(//mnt/c/Users/aminu/AppData/Local/Programs/Python/**)",
+      "Read(//mnt/c/**)",
+      "Bash(cmd.exe /c \"where python\")",
+      "Bash(pip3 --version)",
+      "Bash(python3:*)",
+      "Bash(sudo apt:*)",
+      "Bash(.venv-wsl-ubuntu/bin/pip install:*)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m pytest tests/test_session_logger.py tests/test_cli.py -v 2>&1)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m pytest tests/ -v 2>&1)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m pytest tests/test_cli.py tests/test_session_logger.py -v 2>&1)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m pytest tests/ --tb=short)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m sortique --help 2>&1)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m sortique organize --help 2>&1)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m sortique config --help 2>&1)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m sortique config set --help)",
+      "Bash(.venv-wsl-ubuntu/bin/python -m sortique config add --help)"
+    ]
+  }
+}

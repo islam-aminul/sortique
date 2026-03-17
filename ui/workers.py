@@ -62,6 +62,7 @@ class PipelineWorker(QThread):
         records: list[FileRecord],
         destination_dir: str,
         session_id: str,
+        source_dirs: list[str] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -69,11 +70,12 @@ class PipelineWorker(QThread):
         self._records = records
         self._destination_dir = destination_dir
         self._session_id = session_id
+        self._source_dirs = source_dirs
         self._pool = None
 
     def run(self) -> None:
         try:
-            pool = self._factory.thread_pool(self._destination_dir)
+            pool = self._factory.thread_pool(self._destination_dir, self._source_dirs)
             # Patch the pipeline session_id before processing.
             pool._pipeline._session_id = self._session_id
             self._pool = pool
