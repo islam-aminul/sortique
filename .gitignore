@@ -16,6 +16,7 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+MagicMock/
 
 # Virtual environments
 .venv/
@@ -30,6 +31,7 @@ Thumbs.db
 *.swo
 *.idea/
 .vscode/
+.claude/
 
 # Sortique runtime data
 .sortique/
