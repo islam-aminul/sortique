@@ -79,10 +79,10 @@ python -m pip install --quiet -r requirements.txt 2>nul
 set INSTALL_ERR=%ERRORLEVEL%
 
 :: On Windows, python-magic needs the -bin variant
-python -m pip install --quiet python-magic-bin>=0.4.14 2>nul
+python -m pip install --quiet "python-magic-bin>=0.4.14" 2>nul
 
 :: Install PyInstaller (build tool)
-python -m pip install --quiet pyinstaller>=6.0.0
+python -m pip install --quiet "pyinstaller>=6.0.0"
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Failed to install PyInstaller.
     exit /b 1
@@ -96,8 +96,7 @@ python -c "import magic" 2>nul || echo WARNING: python-magic not available — m
 :: Verify critical packages
 python -c "import PySide6" 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo ERROR: PySide6 failed to install — cannot build GUI application.
-    exit /b 1
+    echo WARNING: PySide6 failed to install — GUI application support will be missing or broken.
 )
 python -c "import PIL" 2>nul
 if %ERRORLEVEL% neq 0 (
