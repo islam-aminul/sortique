@@ -67,7 +67,7 @@ echo "[OK] Virtual environment activated"
 # 4. Upgrade pip
 # ------------------------------------------------------------------
 echo "[..] Upgrading pip..."
-python -m pip install --upgrade pip --quiet || echo "WARNING: pip upgrade failed, continuing..."
+python -m pip install --upgrade pip || echo "WARNING: pip upgrade failed, continuing..."
 
 # ------------------------------------------------------------------
 # 5. Install dependencies
@@ -75,13 +75,13 @@ python -m pip install --upgrade pip --quiet || echo "WARNING: pip upgrade failed
 echo "[..] Installing dependencies..."
 
 # Install from requirements.txt (required packages — errors are visible)
-python -m pip install --quiet -r requirements.txt || {
+python -m pip install -r requirements.txt || {
     echo "ERROR: Failed to install dependencies from requirements.txt"
     exit 1
 }
 
 # Install PyInstaller (build tool)
-python -m pip install --quiet "pyinstaller>=6.0.0" || {
+python -m pip install "pyinstaller>=6.0.0" || {
     echo "ERROR: Failed to install pyinstaller"
     exit 1
 }
@@ -90,8 +90,8 @@ python -m pip install --quiet "pyinstaller>=6.0.0" || {
 if ! python -c "import magic" 2>/dev/null; then
     if command -v brew &>/dev/null; then
         echo "[..] Installing libmagic via Homebrew..."
-        brew install libmagic --quiet 2>/dev/null || true
-        python -m pip install --quiet "python-magic>=0.4.27" 2>/dev/null || true
+        brew install libmagic || true
+        python -m pip install "python-magic>=0.4.27" || true
     fi
 fi
 

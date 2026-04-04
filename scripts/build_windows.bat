@@ -75,14 +75,14 @@ if %ERRORLEVEL% neq 0 (
 echo [..] Installing dependencies...
 
 :: Install core requirements (skip packages that may not have ARM64 wheels)
-python -m pip install --quiet -r requirements.txt 2>nul
+python -m pip install -r requirements.txt
 set INSTALL_ERR=%ERRORLEVEL%
 
 :: On Windows, python-magic needs the -bin variant
-python -m pip install --quiet "python-magic-bin>=0.4.14" 2>nul
+python -m pip install "python-magic-bin>=0.4.14"
 
 :: Install PyInstaller (build tool)
-python -m pip install --quiet "pyinstaller>=6.0.0"
+python -m pip install "pyinstaller>=6.0.0"
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Failed to install PyInstaller.
     exit /b 1

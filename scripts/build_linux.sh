@@ -84,10 +84,10 @@ python -m pip install --upgrade pip --quiet || echo "WARNING: pip upgrade failed
 echo "[..] Installing dependencies..."
 
 # Install core requirements
-python -m pip install --quiet -r requirements.txt 2>/dev/null || true
+python -m pip install -r requirements.txt || true
 
 # Install PyInstaller (build tool)
-python -m pip install --quiet "pyinstaller>=6.0.0"
+python -m pip install "pyinstaller>=6.0.0"
 
 # Report optional packages
 python -c "import rawpy" 2>/dev/null         || echo "WARNING: rawpy not available — RAW file support disabled"
