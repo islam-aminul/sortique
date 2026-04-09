@@ -158,12 +158,13 @@ class TestTaggedMp3:
 class TestUntaggedFile:
 
     def test_untagged_mp3(self, extractor, tmp_path):
+        """Untagged MP3 should use filename as title fallback."""
         f = _write_untagged_mp3(tmp_path / "bare.mp3")
         result = extractor.extract(f)
-        assert result.title is None
+        assert result.title == "bare"  # Filename fallback
         assert result.artist is None
         assert result.album is None
-        assert result.has_tags is False
+        assert result.has_tags is False  # No actual metadata tags
         # Duration should still be available from MPEG frames.
         assert result.duration_seconds is not None
 

@@ -19,6 +19,7 @@ class AudioMetadata:
     artist: str | None = None
     album: str | None = None
     genre: str | None = None
+    year: int | None = None
     duration_seconds: float | None = None
     has_tags: bool = False
 
@@ -33,6 +34,7 @@ _ID3_MAP = {
     "artist": "TPE1",
     "album": "TALB",
     "genre": "TCON",
+    "year": "TDRC",  # Recording date/year
 }
 
 # Vorbis Comment (FLAC, OGG, OPUS) — lower-case keys.
@@ -41,6 +43,7 @@ _VORBIS_MAP = {
     "artist": "artist",
     "album": "album",
     "genre": "genre",
+    "year": "date",  # Year/date field
 }
 
 # MP4 / M4A / AAC — iTunes-style keys.
@@ -49,6 +52,7 @@ _MP4_MAP = {
     "artist": "\xa9ART",
     "album": "\xa9alb",
     "genre": "\xa9gen",
+    "year": "\xa9day",  # Year field
 }
 
 # ASF / WMA — attribute names.
@@ -57,6 +61,7 @@ _ASF_MAP = {
     "artist": "Author",
     "album": "WM/AlbumTitle",
     "genre": "WM/Genre",
+    "year": "WM/Year",
 }
 
 # APE tags (APE, WavPack, Musepack) — mixed-case keys.
@@ -65,6 +70,7 @@ _APE_MAP = {
     "artist": "Artist",
     "album": "Album",
     "genre": "Genre",
+    "year": "Year",
 }
 
 
@@ -80,14 +86,25 @@ class AudioMetadataExtractor:
     """
 
     def extract(self, filepath: str) -> AudioMetadata:
-        """Extract audio tags.  Never raises."""
+        """Extract audio tags.  Never raises.
+        
+        Falls back to filename (without extension) as title when no title tag is found.
+        """
         try:
             audio = mutagen.File(filepath)
         except Exception:
-            return AudioMetadata()
+            # If mutagen fails, still provide filename as title
+            import os
+            filename = os.path.basename(filepath)
+            title = os.path.splitext(filename)[0]
+            return AudioMetadata(title=title, has_tags=False)
 
         if audio is None:
-            return AudioMetadata()
+            # If mutagen can't identify the file, still provide filename as title
+            import os
+            filename = os.path.basename(filepath)
+            title = os.path.splitext(filename)[0]
+            return AudioMetadata(title=title, has_tags=False)
 
         # Duration (available on almost every mutagen type).
         duration: float | None = None
@@ -107,14 +124,23 @@ class AudioMetadataExtractor:
         artist = self._read_tag(audio, key_map, "artist")
         album = self._read_tag(audio, key_map, "album")
         genre = self._read_tag(audio, key_map, "genre")
+        year = self._read_year_tag(audio, key_map)
 
+        # has_tags is True only if metadata tags are present (not filename fallback)
         has_tags = any(v is not None for v in (title, artist, album))
+
+        # Fallback to filename (without extension) if title is unavailable
+        if title is None:
+            import os
+            filename = os.path.basename(filepath)
+            title = os.path.splitext(filename)[0]
 
         return AudioMetadata(
             title=title,
             artist=artist,
             album=album,
             genre=genre,
+            year=year,
             duration_seconds=duration,
             has_tags=has_tags,
         )
@@ -170,3 +196,59 @@ class AudioMetadataExtractor:
 
         text = str(val).strip()
         return text if text else None
+
+    @staticmethod
+    def _read_year_tag(audio: mutagen.FileType, key_map: dict[str, str]) -> int | None:
+        """Read year tag and convert to integer.
+        
+        Handles various year formats:
+        - Simple year: "2024"
+        - ISO date: "2024-03-15"
+        - ID3 TDRC timestamp objects
+        """
+        key = key_map.get("year")
+        if key is None:
+            return None
+
+        try:
+            val = audio[key]
+        except (KeyError, TypeError):
+            # Try audio.tags dict directly
+            tags = getattr(audio, "tags", None)
+            if tags is None:
+                return None
+            try:
+                val = tags[key]
+            except (KeyError, TypeError):
+                return None
+
+        # mutagen returns lists for most formats
+        if isinstance(val, list):
+            val = val[0] if val else None
+
+        if val is None:
+            return None
+
+        # Handle ID3 timestamp objects (TDRC)
+        if hasattr(val, "year"):
+            return int(val.year)
+
+        # Handle string values
+        text = str(val).strip()
+        if not text:
+            return None
+
+        # Extract year from ISO date format (YYYY-MM-DD)
+        if "-" in text:
+            text = text.split("-")[0]
+
+        # Try to parse as integer
+        try:
+            year = int(text)
+            # Sanity check: year should be reasonable
+            if 1900 <= year <= 2100:
+                return year
+        except (ValueError, TypeError):
+            pass
+
+        return None

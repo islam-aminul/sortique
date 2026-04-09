@@ -70,7 +70,7 @@ class MusicBrainzClient:
         if not self.enabled or self._unavailable:
             return audio_meta
 
-        # Need at least a title to search.
+        # Need at least a title to search (title is now always set via filename fallback)
         if not audio_meta.title:
             return audio_meta
 
@@ -102,6 +102,11 @@ class MusicBrainzClient:
             genre = self._extract_genre(result)
             if genre:
                 audio_meta.genre = genre
+
+        if audio_meta.year is None:
+            year = self._extract_year(result)
+            if year:
+                audio_meta.year = year
 
         return audio_meta
 
@@ -213,6 +218,34 @@ class MusicBrainzClient:
                 best_count = count
 
         return best_tag
+
+    @staticmethod
+    def _extract_year(recording: dict) -> int | None:
+        """Pull the release year from a recording result.
+        
+        Extracts year from the first release date found.
+        """
+        release_list = recording.get("release-list", [])
+        for release in release_list:
+            if not isinstance(release, dict):
+                continue
+            
+            # Try to get release date
+            date_str = release.get("date")
+            if not date_str:
+                continue
+            
+            # Parse year from date string (format: YYYY or YYYY-MM-DD)
+            try:
+                year_str = date_str.split("-")[0]
+                year = int(year_str)
+                # Sanity check
+                if 1900 <= year <= 2100:
+                    return year
+            except (ValueError, IndexError):
+                continue
+        
+        return None
 
     # ------------------------------------------------------------------
     # Error handling

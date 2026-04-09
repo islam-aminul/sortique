@@ -5,6 +5,7 @@
   "verify_copies": false,
   "follow_symlinks": false,
   "musicbrainz_enabled": false,
+  "write_audio_metadata": true,
 
   "screenshot_resolutions": [
     [750, 1334],

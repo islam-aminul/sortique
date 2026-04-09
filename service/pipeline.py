@@ -462,6 +462,8 @@ class Pipeline:
             date_result=self._local.date_result,
             exif=path_exif,
             file_type=record.file_type,
+            content_type=record.content_type,
+            source_path=record.source_path,
         )
         record.destination_path = dest
 
@@ -507,6 +509,7 @@ class Pipeline:
         elif record.file_type == FileType.AUDIO:
             self._audio_processor.process(
                 record.source_path, record.destination_path,
+                audio_metadata=self._local.audio_meta,
             )
         elif record.file_type == FileType.DOCUMENT:
             self._document_processor.process(

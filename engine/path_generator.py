@@ -75,6 +75,8 @@ class PathGenerator:
         is_burst: bool = False,
         burst_index: int = 0,
         is_export: bool = False,
+        content_type: str | None = None,
+        source_path: str | None = None,
     ) -> str:
         """Generate the full destination path.
 
@@ -101,7 +103,18 @@ class PathGenerator:
             Zero-based position in the burst (only used when *is_burst*).
         is_export:
             ``True`` to use the flat export path: ``Exports/{Year}/``.
+        content_type:
+            MIME type of the file (used to correct extensions).
+        source_path:
+            Original source file path (used to detect actual MP4 audio).
         """
+        # Correct extension for MP4 audio files with wrong extension
+        if file_type == FileType.AUDIO and source_path:
+            ext_lower = (original_ext or "").lower()
+            # Check if file is actually MP4 audio by examining content
+            if ext_lower in (".mp3", ".aac", ".mp4") and self._is_mp4_audio_file(source_path):
+                original_ext = ".m4a"
+        
         year = date_result.date.year if date_result and date_result.date else None
         make = exif.make if exif else None
         model = exif.model if exif else None
@@ -299,3 +312,22 @@ class PathGenerator:
             formatted = model.strip()  # type: ignore[union-attr]
 
         return FileSystemHelper.sanitize_filename(formatted, target_os="windows")
+
+    @staticmethod
+    def _is_mp4_audio_file(filepath: str) -> bool:
+        """Check if file is actually MP4 audio by examining ftyp box.
+        
+        Returns True if the file has an ISO BMFF (ftyp) container,
+        indicating it's an MP4-based format (M4A, AAC, 3GP, etc.).
+        """
+        try:
+            with open(filepath, "rb") as f:
+                header = f.read(12)
+            
+            # Check for ftyp box at offset 4
+            if len(header) >= 8 and header[4:8] == b"ftyp":
+                return True
+            
+            return False
+        except (OSError, IOError):
+            return False
