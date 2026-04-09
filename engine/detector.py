@@ -171,7 +171,17 @@ class ContentDetector:
         return len(header) >= 8 and header[4:8] == b"ftyp"
 
     def _check_ftyp(self, filepath: str) -> tuple[str, FileType] | None:
-        """Read the ftyp major-brand from an ISO base media file."""
+        """Read the ftyp major-brand from an ISO base media file.
+
+        The ISO BMFF (ftyp) container is shared by video (``.mp4``),
+        audio (``.m4a``, ``.aac``), and image (HEIC/AVIF) files.
+        Ambiguous brands like ``isom``, ``mp42``, and ``3gp*`` can wrap
+        either audio-only or audio+video tracks.  When the brand itself
+        is ambiguous (maps to VIDEO), the file extension is checked:
+        if it is a known audio extension the result is overridden to
+        AUDIO so that ``.mp3``, ``.m4a``, etc. are never misclassified
+        as video.
+        """
         try:
             with open(filepath, "rb") as f:
                 buf = f.read(32)
@@ -183,11 +193,25 @@ class ContentDetector:
 
         brand = buf[8:12]
         result = _FTYP_BRANDS.get(brand)
-        if result is not None:
-            return result
 
-        # Fallback: any ftyp box is likely video/mp4.
-        return "video/mp4", FileType.VIDEO
+        if result is None:
+            # Fallback: any ftyp box is likely video/mp4.
+            result = ("video/mp4", FileType.VIDEO)
+
+        # --- Extension-based disambiguation for audio containers -------
+        # Many audio files (.m4a, .mp3, .aac, .ogg) are wrapped in the
+        # same ISO BMFF container used by video.  The ftyp brand alone
+        # cannot distinguish them.  Trust the extension when it clearly
+        # indicates audio.
+        if result[1] == FileType.VIDEO:
+            _, ext = os.path.splitext(filepath)
+            ext_lower = ext.lower()
+            ext_ftype = EXTENSION_MAP.get(ext_lower)
+            if ext_ftype == FileType.AUDIO:
+                mime = _EXT_MIME.get(ext_lower, "audio/mp4")
+                return mime, FileType.AUDIO
+
+        return result
 
     # ------------------------------------------------------------------
     # RIFF container
