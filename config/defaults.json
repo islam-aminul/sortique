@@ -56,7 +56,8 @@
   ],
   "screenshot_filename_patterns": [
     "Screenshot_*",
-    "SCR_*"
+    "SCR_*",
+    "wp_ss_*"
   ],
   "voice_note_patterns": [
     "Recording_*",
@@ -69,10 +70,12 @@
   ],
 
   "skip_filename_patterns": [
-    "*.supplemental-metadata.json"
+    "*.supplemental-metadata.json",
+    "????????-????-????-????-????????????-*-*.json"
   ],
 
   "call_recording_patterns": [
+    "Call recording *",
     "SIM*_*_*",
     "Call_[0-9]*",
     "callrecord_*",
