@@ -189,6 +189,7 @@ class AppFactory:
             date_parser=self.date_parser(),
             video_extractor=self.video_extractor(),
             audio_extractor=self.audio_extractor(),
+            musicbrainz_client=self.musicbrainz_client(),
             image_processor=self.image_processor(),
             video_processor=self.video_processor(),
             audio_processor=self.audio_processor(),

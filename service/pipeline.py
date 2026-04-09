@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from sortique.engine.detector import ContentDetector
     from sortique.engine.hasher import FileHasher
     from sortique.engine.metadata.audio_metadata import AudioMetadataExtractor
+    from sortique.engine.metadata.musicbrainz_client import MusicBrainzClient
     from sortique.engine.metadata.date_parser import DateParser
     from sortique.engine.metadata.exif_extractor import ExifExtractor
     from sortique.engine.metadata.video_metadata import VideoMetadataExtractor
@@ -110,6 +111,7 @@ class Pipeline:
         date_parser: DateParser,
         video_extractor: VideoMetadataExtractor,
         audio_extractor: AudioMetadataExtractor,
+        musicbrainz_client: MusicBrainzClient | None = None,
         image_processor: ImageProcessor,
         video_processor: VideoProcessor,
         audio_processor: AudioProcessor,
@@ -131,6 +133,7 @@ class Pipeline:
         self._date_parser = date_parser
         self._video_extractor = video_extractor
         self._audio_extractor = audio_extractor
+        self._musicbrainz_client = musicbrainz_client
         self._image_processor = image_processor
         self._video_processor = video_processor
         self._audio_processor = audio_processor
@@ -350,6 +353,10 @@ class Pipeline:
             self._local.audio_meta = self._audio_extractor.extract(
                 record.source_path,
             )
+            if self._musicbrainz_client is not None:
+                self._local.audio_meta = self._musicbrainz_client.enrich(
+                    self._local.audio_meta, record.source_path,
+                )
 
         # DOCUMENT / SIDECAR: no metadata extraction needed.
         return True, None
