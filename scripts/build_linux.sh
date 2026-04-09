@@ -16,6 +16,10 @@ echo
 # ------------------------------------------------------------------
 # 1. Locate Python
 # ------------------------------------------------------------------
+ARCH=$(uname -m)
+SUFFIX="Linux-${ARCH}"
+EXE_PATH="dist/sortique-${SUFFIX}"
+
 PYTHON="${PYTHON:-python3}"
 
 if ! command -v "$PYTHON" &>/dev/null; then
@@ -50,6 +54,12 @@ if ! ldconfig -p 2>/dev/null | grep -q libmagic; then
     echo "WARNING: libmagic not found. Install it for file-type detection:"
     echo "  sudo apt install libmagic1       (Debian/Ubuntu)"
     echo "  sudo dnf install file-libs       (Fedora)"
+fi
+
+# Qt6/PySide6 missing GUI dependencies (common on WSL/Server)
+if ! ldconfig -p 2>/dev/null | grep -q libxcb-cursor; then
+    echo "WARNING: Missing Qt6/X11 GUI dependencies (crucial for WSL). Install them:"
+    echo "  sudo apt install libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xkb1 libx11-xcb1 libwebp7 libwebpdemux2 libwebpmux3 libxcb-cursor0 libsm6 libice6 fontconfig libfontconfig1 libfreetype6 fonts-dejavu fonts-ubuntu"
 fi
 
 # ------------------------------------------------------------------
@@ -125,7 +135,7 @@ echo "[OK] Clean"
 echo "[..] Building executable with PyInstaller..."
 pyinstaller sortique.spec
 
-if [ ! -f "dist/sortique" ]; then
+if [ ! -f "$EXE_PATH" ]; then
     echo
     echo "==================================================="
     echo " BUILD FAILED"
@@ -136,15 +146,15 @@ fi
 # ------------------------------------------------------------------
 # 10. Report result
 # ------------------------------------------------------------------
-SIZE=$(du -sh "dist/sortique" | cut -f1)
+SIZE=$(du -sh "$EXE_PATH" | cut -f1)
 echo
 echo "==================================================="
 echo " BUILD SUCCESSFUL"
-echo " Output: dist/sortique ($SIZE)"
+echo " Output: $EXE_PATH ($SIZE)"
 echo ""
 echo " Optional — create an AppImage (requires appimagetool):"
 echo "   mkdir -p AppDir/usr/bin"
-echo "   cp dist/sortique AppDir/usr/bin/sortique"
+echo "   cp \"$EXE_PATH\" AppDir/usr/bin/sortique"
 echo "   cp resources/app_icon.svg AppDir/sortique.svg"
-echo "   appimagetool AppDir dist/Sortique-x86_64.AppImage"
+echo "   appimagetool AppDir dist/Sortique-${ARCH}.AppImage"
 echo "==================================================="
