@@ -150,6 +150,20 @@ class Pipeline:
         # concurrent workers each get their own isolated copy.
         self._local = threading.local()
 
+        # In-memory set of source_paths already completed in this session.
+        # Used by _stage_check_processed to avoid an O(n²) DB scan.
+        # Pre-seeded from the DB once so crash-resume scenarios still work:
+        # any files completed in a previous run of the same session are
+        # recognised without hitting the DB again per file.
+        self._completed_paths_lock = threading.Lock()
+        if session_id:
+            already_done = self._db.get_file_records(
+                session_id, status=FileStatus.COMPLETED,
+            )
+            self._completed_paths: set[str] = {r.source_path for r in already_done}
+        else:
+            self._completed_paths: set[str] = set()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -216,6 +230,9 @@ class Pipeline:
         result.final_status = FileStatus.COMPLETED
         if not self._dry_run:
             self._db.update_file_record(record)
+        # Track completed path in-memory for fast Stage 2 lookups.
+        with self._completed_paths_lock:
+            self._completed_paths.add(record.source_path)
         return result
 
     def process_batch(
@@ -249,15 +266,13 @@ class Pipeline:
     def _stage_check_processed(
         self, record: FileRecord,
     ) -> tuple[bool, str | None]:
-        """Skip if an identical source_path was already completed in this session."""
-        completed = self._db.get_file_records(
-            self._session_id, status=FileStatus.COMPLETED,
-        )
-        for existing in completed:
-            if (
-                existing.source_path == record.source_path
-                and existing.id != record.id
-            ):
+        """Skip if an identical source_path was already completed in this session.
+
+        Uses an in-memory set for O(1) lookup instead of fetching all
+        completed records from the DB on every file (which was O(n²)).
+        """
+        with self._completed_paths_lock:
+            if record.source_path in self._completed_paths:
                 return False, "already processed in this session"
         return True, None
 

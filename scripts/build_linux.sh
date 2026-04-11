@@ -8,6 +8,14 @@
 # =========================================================================
 set -euo pipefail
 
+# ------------------------------------------------------------------
+# Resolve repo root — works regardless of where the script is called from
+# (e.g.  bash scripts/build_linux.sh  OR  bash /full/path/build_linux.sh)
+# ------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
 echo "==================================================="
 echo " Sortique Build Script — Linux"
 echo "==================================================="

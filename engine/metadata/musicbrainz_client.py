@@ -74,6 +74,16 @@ class MusicBrainzClient:
         if not audio_meta.title:
             return audio_meta
 
+        # Skip the network call (and the 1-second rate-limit sleep) if every
+        # enrichable field is already populated — nothing to fill in.
+        if (
+            audio_meta.artist is not None
+            and audio_meta.album is not None
+            and audio_meta.genre is not None
+            and audio_meta.year is not None
+        ):
+            return audio_meta
+
         try:
             result = self._search_recording(
                 audio_meta.title, audio_meta.artist,
